@@ -21,6 +21,9 @@
    - [Phase 7 — v0.7 Documentation & Packaging (Week 9)](#phase-7--v07-documentation--packaging-week-9) ✅
    - [Phase 8 — v0.8 Robustness & Testing (Week 10)](#phase-8--v08-robustness--testing-week-10) ✅
    - [Phase 9 — v1.0 Stable Release (Week 11–12)](#phase-9--v10-stable-release-week-1112)
+   - [Phase 10 — v1.1 Tier 1: Evaluation Depth](#phase-10--v11-tier-1-evaluation-depth)
+   - [Phase 11 — v1.2 Tier 2: Developer Experience](#phase-11--v12-tier-2-developer-experience)
+   - [Phase 12 — v2.0 Tier 3: Polish & Ecosystem](#phase-12--v20-tier-3-polish--ecosystem)
 5. [Module Breakdown & Implementation Details](#5-module-breakdown--implementation-details)
 6. [CLI Interface Specification](#6-cli-interface-specification)
 7. [JSON Output Schema](#7-json-output-schema)
@@ -465,6 +468,120 @@ llm-diff/
 
 ---
 
+### Phase 10 — v1.1 Tier 1: Evaluation Depth
+**Goal**: Add the features that move llm-diff from a diff tool into a serious evaluation framework.
+
+#### Tasks
+
+- [ ] **LLM-as-a-Judge scoring (`--judge MODEL`)**
+  - Send both responses to a third model (e.g. `gpt-4o`) with a structured evaluation prompt
+  - Return: winner (`A` / `B` / `tie`), reasoning string, optional category scores (accuracy, coherence, relevance)
+  - New `JudgeResult` dataclass on `ComparisonReport`
+  - Expose in terminal footer, HTML report card, and JSON output
+  - Cache judge calls independently (same cache key scheme)
+
+- [ ] **Multi-model comparison (`--model-c`, `--model-d`, ...)**
+  - Accept up to N models; generate an NxN similarity matrix
+  - Terminal: ranked table of pairwise scores
+  - HTML report: heatmap grid with colour-coded cells
+  - Avoids the O(n²) manual pairwise workflow
+
+- [ ] **Structured JSON diff mode**
+  - Detect when both responses are valid JSON and diff at the key/value level
+  - Report: added keys, removed keys, changed values, type changes
+  - Array handling: order-sensitive and order-insensitive modes
+  - Activated automatically when JSON is detected, or via `--mode json-struct`
+
+- [ ] **Cost tracking (`--show-cost`)**
+  - Built-in pricing table for known models (GPT-4o, GPT-4o-mini, Claude 3.5 Sonnet, etc.)
+  - Map `prompt_tokens` + `completion_tokens` to estimated USD per model
+  - Display in terminal footer and HTML report
+  - Update pricing table via `~/.llmdiff` override for custom/fine-tuned models
+
+**v1.1 Success Metric**: Can answer "which model is better *and* cheaper for my use case?" in one command.
+
+---
+
+### Phase 11 — v1.2 Tier 2: Developer Experience
+**Goal**: Make llm-diff indispensable for teams running ongoing model evaluations.
+
+#### Tasks
+
+- [ ] **Determinism / consistency analysis (`--runs N`)**
+  - Run the same prompt on the same model N times (default 5) and report output variance
+  - Metrics: mean word similarity across run pairs, standard deviation, min/max spread
+  - Answers: "How stable is this model at temperature T?"
+  - Useful for temperature sensitivity studies and provider reliability checks
+
+- [ ] **Historical tracking**
+  - Persist `ComparisonReport` results to a local SQLite DB (`~/.local/share/llm-diff/history.db`) or append-only JSONL file
+  - CLI: `llm-diff history` — list past runs with prompt snippet, models, scores, date
+  - CLI: `llm-diff history --prompt "Explain recursion"` — show trend line for a prompt over time
+  - Opt-out via `--no-history` or `history = false` in `.llmdiff`
+
+- [ ] **Side-by-side HTML layout**
+  - Add a toggle button in the HTML report to switch between unified diff view and two-column side-by-side view
+  - Two-column view mirrors the GitHub PR split diff experience
+  - Improves readability for long-form response comparisons
+
+- [ ] **Export to CSV / Markdown**
+  - `--out results.csv` — batch results as CSV (id, word_sim, semantic_sim, bleu, rouge, judge_winner)
+  - `--out results.md` — Markdown table suitable for pasting into PRs, Notion, etc.
+  - Auto-detect format from file extension; `--format csv|md|html` as explicit override
+
+- [ ] **Native Anthropic / Google / AWS SDK support**
+  - Native `anthropic` SDK integration — eliminate the LiteLLM proxy requirement
+  - Native `google-generativeai` SDK for Gemini models
+  - Optional `boto3` support for AWS Bedrock (Claude, Titan, etc.)
+  - Each added as an optional extra: `pip install "llm-diff[anthropic]"`, `pip install "llm-diff[google]"`, `pip install "llm-diff[bedrock]"`
+
+**v1.2 Success Metric**: Teams can track model quality trends over weeks without exporting data manually.
+
+---
+
+### Phase 12 — v2.0 Tier 3: Polish & Ecosystem
+**Goal**: Round out the feature surface and expand integration points.
+
+#### Tasks
+
+- [ ] **Custom scoring plugins (`--scorer path/to/scorer.py`)**
+  - Plugin protocol: `def score(text_a: str, text_b: str) -> float`
+  - Loaded dynamically at runtime
+  - Useful for domain-specific checks: medical accuracy, code correctness, format compliance
+  - Score displayed alongside built-in metrics; included in HTML reports and JSON output
+
+- [ ] **Watch mode (`--watch`)**
+  - `llm-diff --watch prompts.yml -a gpt-4o -b gpt-4o-mini` — re-runs on file changes
+  - Uses `watchfiles` or stdlib `stat` polling
+  - Useful during active prompt engineering sessions for instant feedback
+
+- [ ] **Diff noise filtering**
+  - `--ignore-case` — treat upper/lower-case as equal in word diff
+  - `--ignore-punctuation` — strip punctuation before diffing
+  - `--ignore-whitespace` — collapse whitespace differences
+  - Reduce noise from stylistic variation that doesn't reflect content changes
+
+- [ ] **Response streaming display**
+  - Stream tokens from both models as they arrive instead of waiting for completion
+  - Show a live side-by-side stream in the terminal while the diff is computed after both finish
+  - Improves perceived responsiveness for long responses
+
+- [ ] **Per-metric CI thresholds**
+  - `--fail-under-bleu 0.4` — exit 1 if BLEU drops below threshold
+  - `--fail-under-rouge 0.6` — exit 1 if ROUGE-L drops below threshold
+  - `--fail-under-semantic 0.85` — explicit semantic threshold (alias for current `--fail-under` when `--semantic` is set)
+  - Each gate is independent; any failing gate triggers exit 1
+
+- [ ] **TypeScript / npm package**
+  - Standalone TypeScript implementation (no Python dependency)
+  - Same JSON output schema as Python package
+  - `import { diff } from 'llm-diff'` programmatic API
+  - Target Node.js 18+; publish to npm as `llm-diff`
+
+**v2.0 Success Metric**: llm-diff is referenced as the standard open-source LLM eval CLI in developer tooling roundups.
+
+---
+
 ## 5. Module Breakdown & Implementation Details
 
 ### `cli.py`
@@ -648,5 +765,8 @@ Measured at v1.0 launch and 30 days post-launch:
 | 9 | v0.7 Docs | LICENSE, README, CHANGELOG, CONTRIBUTING, PyPI metadata | ✅ Complete |
 | 10 | v0.8 Testing | Integration tests, GitHub Actions CI, edge-case hardening | ✅ Complete |
 | 11–12 | v1.0 Stable | Nice-to-haves, final QA, PyPI publish, launch | ✅ Complete |
+| TBD | v1.1 Tier 1 | LLM-as-a-Judge, multi-model matrix, structured JSON diff, cost tracking | ⬜ Planned |
+| TBD | v1.2 Tier 2 | Consistency analysis, history tracking, side-by-side HTML, CSV/MD export, native SDKs | ⬜ Planned |
+| TBD | v2.0 Tier 3 | Custom plugins, watch mode, diff filters, streaming, per-metric CI gates, npm package | ⬜ Planned |
 
-**Total: ~12 weeks to v1.0**
+**Total: ~12 weeks to v1.0** · Tier 1–3 phases are community-driven and tracked on the [GitHub Issues board](https://github.com/user/llm-diff/issues).

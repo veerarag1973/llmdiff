@@ -34,6 +34,7 @@
 - [Programmatic API](#programmatic-api)
 - [CI/CD Integration](#cicd-integration)
 - [HTML Reports](#html-reports)
+- [Community & Feedback](#community--feedback)
 - [Contributing](#contributing)
 
 ---
@@ -788,6 +789,27 @@ Batch reports add:
 - Summary table with all prompts, scores, and pass/fail highlighting
 - Per-item expandable diff cards
 - Average similarity across the batch
+
+---
+
+## Community & Feedback
+
+`llm-diff` is open source and community-driven. Your feedback, bug reports,
+and feature ideas directly shape the roadmap.
+
+| Action | Link |
+|---|---|
+| **Report a bug** | [Open a bug report](https://github.com/user/llm-diff/issues/new?labels=bug&template=bug_report.md) |
+| **Request a feature** | [Open a feature request](https://github.com/user/llm-diff/issues/new?labels=enhancement&template=feature_request.md) |
+| **Browse open issues** | [github.com/user/llm-diff/issues](https://github.com/user/llm-diff/issues) |
+| **Join the discussion** | [GitHub Discussions](https://github.com/user/llm-diff/discussions) |
+| **View the roadmap** | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
+
+When filing an issue, please include:
+- The `llm-diff` version (`llm-diff --version`)
+- The command you ran
+- The full error output (if applicable)
+- Your OS and Python version
 
 ---
 
