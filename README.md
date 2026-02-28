@@ -71,15 +71,13 @@ multi-model comparison.
 
 | | |
 |---|---|
-| **Bug reports** | [Open an issue on GitHub](https://github.com/veerarag1973/llmdiff/issues/new?labels=bug&template=bug_report.md) *(create the repo first — see note below)* |
-| **Feature requests** | [Open a feature request](https://github.com/veerarag1973/llmdiff/issues/new?labels=enhancement&template=feature_request.md) *(create the repo first)* |
-| **Questions & discussion** | [GitHub Discussions](https://github.com/veerarag1973/llmdiff/discussions) *(create the repo first)* |
+| **Bug reports** | [Open an issue](https://github.com/veerarag1973/llmdiff/issues/new?labels=bug&template=bug_report.md) |
+| **Feature requests** | [Open a feature request](https://github.com/veerarag1973/llmdiff/issues/new?labels=enhancement&template=feature_request.md) |
+| **Questions & discussion** | [GitHub Discussions](https://github.com/veerarag1973/llmdiff/discussions) |
+| **Open issues** | [github.com/veerarag1973/llmdiff/issues](https://github.com/veerarag1973/llmdiff/issues) |
 | **PyPI project page** | [pypi.org/project/llm-diff](https://pypi.org/project/llm-diff/) |
 | **Roadmap** | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
-
-> **Note:** The GitHub repository at `github.com/veerarag1973/llmdiff` has not been created yet.
-> Create it on GitHub, then push this project — the issue/discussion links above will become active.
 
 When filing a bug, please include: `llm-diff --version`, your OS, Python
 version, the full command you ran, and the complete error output.
