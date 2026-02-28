@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>llm-diff Batch Report — {{ model_a }} vs {{ model_b }}</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --bg-card2: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --ins: #1a4a1a;
+    --ins-text: #7ee787;
+    --del: #4a1a1a;
+    --del-text: #f85149;
+    --eq-text: #e6edf3;
+    --high: #3fb950;
+    --mid: #e3b341;
+    --low: #f85149;
+    --radius: 8px;
+    --shadow: 0 2px 8px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.6; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Page header ── */
+  .page-header {
+    padding: 24px 32px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+  }
+  .page-header h1 { font-size: 1.3rem; font-weight: 600; margin-bottom: 4px; }
+  .page-header .meta { color: var(--muted); font-size: 12px; }
+  .model-badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); background: var(--bg); }
+  .model-badge.a { border-color: #58a6ff44; color: #58a6ff; }
+  .model-badge.b { border-color: #bc8cff44; color: #bc8cff; }
+  .vs { margin: 0 8px; color: var(--muted); font-size: 12px; }
+
+  /* ── Summary bar ── */
+  .summary-bar {
+    display: flex; gap: 24px; padding: 16px 32px;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .summary-stat { text-align: center; }
+  .summary-stat .val { font-size: 1.4rem; font-weight: 700; }
+  .summary-stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .score-high .val { color: var(--high); }
+  .score-mid  .val { color: var(--mid);  }
+  .score-low  .val { color: var(--low);  }
+
+  /* ── Table of contents ── */
+  .toc { padding: 16px 32px; background: var(--bg-card); border-bottom: 1px solid var(--border); }
+  .toc h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+  .toc-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; }
+  .toc-list li a { padding: 3px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--muted); transition: border-color .15s, color .15s; }
+  .toc-list li a:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+  /* ── Result card ── */
+  .result-card { border-bottom: 1px solid var(--border); padding: 24px 32px; }
+  .result-card:last-child { border-bottom: none; }
+  .result-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .result-id { font-size: 1rem; font-weight: 600; color: var(--text); }
+  .result-id .idx { color: var(--muted); font-weight: 400; margin-right: 6px; }
+  .score-pill { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid; }
+  .score-pill.score-high { color: var(--high); border-color: #3fb95044; background: #3fb95022; }
+  .score-pill.score-mid  { color: var(--mid);  border-color: #e3b34144; background: #e3b34122; }
+  .score-pill.score-low  { color: var(--low);  border-color: #f8514944; background: #f8514922; }
+
+  .prompt-label { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .prompt-text {
+    padding: 8px 12px; border-radius: var(--radius); background: var(--bg-card2);
+    border: 1px solid var(--border); font-style: italic; color: var(--muted);
+    font-size: 13px; margin-bottom: 16px; white-space: pre-wrap; word-break: break-word;
+  }
+
+  /* ── Diff view ── */
+  .diff-area {
+    padding: 12px 14px; border-radius: var(--radius); background: var(--bg-card2);
+    border: 1px solid var(--border); font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+    margin-bottom: 12px;
+  }
+  .eq  { color: var(--eq-text); }
+  .ins { background: var(--ins); color: var(--ins-text); border-radius: 2px; padding: 1px 2px; }
+  .del { background: var(--del); color: var(--del-text); border-radius: 2px; padding: 1px 2px; text-decoration: line-through; }
+
+  .toggle-btn {
+    cursor: pointer; font-size: 11px; color: var(--muted); background: none;
+    border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px;
+    margin-bottom: 8px; transition: color .15s, border-color .15s;
+  }
+  .toggle-btn:hover { color: var(--text); border-color: var(--muted); }
+
+  /* ── Meta grid ── */
+  .meta-grid {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px;
+  }
+  .meta-cell {
+    flex: 1; min-width: 140px;
+    padding: 8px 12px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--bg-card2);
+  }
+  .meta-cell .mc-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
+  .meta-cell .mc-val { font-size: 13px; font-weight: 500; }
+  .mc-a { color: #58a6ff; }
+  .mc-b { color: #bc8cff; }
+
+  /* ── Footer ── */
+  .page-footer { padding: 16px 32px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <h1>llm-diff Batch Report</h1>
+  <div class="meta">
+    <span class="model-badge a">{{ model_a }}</span>
+    <span class="vs">vs</span>
+    <span class="model-badge b">{{ model_b }}</span>
+    &nbsp;·&nbsp; {{ total }} prompt{{ 's' if total != 1 else '' }}
+    &nbsp;·&nbsp; Generated {{ generated_at }}
+    &nbsp;·&nbsp; llm-diff v{{ version }}
+  </div>
+</header>
+
+<div class="summary-bar">
+  <div class="summary-stat">
+    <div class="val">{{ total }}</div>
+    <div class="lbl">Prompts</div>
+  </div>
+  <div class="summary-stat {{ avg_word_score_class }}">
+    <div class="val">{{ avg_word_similarity_pct }}</div>
+    <div class="lbl">Avg Word Similarity</div>
+  </div>
+  {% if has_semantic %}
+  <div class="summary-stat {{ avg_semantic_score_class }}">
+    <div class="val">{{ avg_semantic_similarity_pct }}</div>
+    <div class="lbl">Avg Semantic Similarity</div>
+  </div>
+  {% endif %}
+</div>
+
+<nav class="toc" aria-label="Prompt index">
+  <h2>Prompts</h2>
+  <ul class="toc-list">
+    {% for r in results %}
+    <li><a href="#item-{{ loop.index }}">{{ r.id }}</a></li>
+    {% endfor %}
+  </ul>
+</nav>
+
+<main>
+  {% for r in results %}
+  <section class="result-card" id="item-{{ loop.index }}">
+    <div class="result-header">
+      <span class="result-id">
+        <span class="idx">#{{ loop.index }}</span>{{ r.id }}
+        {% if r.input_label %}<span style="color:var(--muted);font-size:11px;margin-left:6px;">[{{ r.input_label }}]</span>{% endif %}
+      </span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="score-pill {{ r.word_score_class }}">Word {{ r.word_similarity_pct }}</span>
+        {% if r.semantic_score is not none %}
+        <span class="score-pill {{ r.semantic_score_class }}">Semantic {{ r.semantic_similarity_pct }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="prompt-label">Prompt</div>
+    <div class="prompt-text">{{ r.prompt }}</div>
+
+    <button class="toggle-btn" onclick="toggleDeletions(this)">Hide deletions</button>
+    <div class="diff-area">{% for chunk in r.chunks %}{% if chunk.type == "equal" %}<span class="eq">{{ chunk.text }}</span>{% elif chunk.type == "insert" %}<span class="ins">{{ chunk.text }}</span>{% else %}<span class="del">{{ chunk.text }}</span>{% endif %}{% endfor %}</div>
+
+    <div class="meta-grid">
+      <div class="meta-cell">
+        <div class="mc-lbl">Tokens (A)</div>
+        <div class="mc-val mc-a">{{ r.tokens_a }}</div>
+      </div>
+      <div class="meta-cell">
+        <div class="mc-lbl">Tokens (B)</div>
+        <div class="mc-val mc-b">{{ r.tokens_b }}</div>
+      </div>
+      <div class="meta-cell">
+        <div class="mc-lbl">Latency A (ms)</div>
+        <div class="mc-val mc-a">{{ r.latency_a_ms }}</div>
+      </div>
+      <div class="meta-cell">
+        <div class="mc-lbl">Latency B (ms)</div>
+        <div class="mc-val mc-b">{{ r.latency_b_ms }}</div>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+</main>
+
+<footer class="page-footer">
+  Generated by llm-diff v{{ version }} &mdash; {{ generated_at }}
+</footer>
+
+<script>
+function toggleDeletions(btn) {
+  var diffArea = btn.nextElementSibling;
+  var dels = diffArea.querySelectorAll('.del');
+  var hiding = btn.textContent.trim() === 'Hide deletions';
+  dels.forEach(function(el) { el.style.display = hiding ? 'none' : ''; });
+  btn.textContent = hiding ? 'Show deletions' : 'Hide deletions';
+}
+</script>
+
+</body>
+</html>

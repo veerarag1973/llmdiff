@@ -82,6 +82,7 @@ def render_diff(
     result: ComparisonResult,
     diff_result: DiffResult,
     console: Console,
+    semantic_score: float | None = None,
 ) -> None:
     """Write the full diff output to *console*.
 
@@ -96,6 +97,9 @@ def render_diff(
     console:
         A :class:`rich.console.Console` instance.  Pass ``no_color=True``
         when constructing it to honour the ``--no-color`` flag.
+    semantic_score:
+        Optional semantic cosine similarity (0.0–1.0).  When provided, an
+        extra "Semantic:" line is added to the footer.
     """
     ra = result.response_a
     rb = result.response_b
@@ -140,6 +144,10 @@ def render_diff(
     footer = Text()
     footer.append("  Similarity: ", style="dim")
     footer.append(diff_result.similarity_pct, style=score_style)
+    if semantic_score is not None:
+        sem_style = _score_colour(semantic_score)
+        footer.append("  |  Semantic: ", style="dim")
+        footer.append(f"{semantic_score:.2%}", style=sem_style)
     footer.append("  |  Tokens: ", style="dim")
     footer.append(f"{ra.total_tokens}", style="bold white")
     footer.append(" / ", style="dim")

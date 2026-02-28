@@ -249,3 +249,33 @@ class TestRenderDiff:
     def test_empty_responses_handled_gracefully(self) -> None:
         output = self._render(text_a="", text_b="")
         assert "Similarity" in output
+
+    def test_semantic_score_shown_when_provided(self) -> None:
+        comparison = _make_comparison()
+        diff_result = word_diff(comparison.response_a.text, comparison.response_b.text)
+        console = _recording_console()
+        render_diff(
+            prompt="Test",
+            result=comparison,
+            diff_result=diff_result,
+            console=console,
+            semantic_score=0.78,
+        )
+        output = console.export_text()
+        assert "Semantic" in output
+        assert "78" in output
+
+    def test_semantic_score_absent_when_none(self) -> None:
+        comparison = _make_comparison()
+        diff_result = word_diff(comparison.response_a.text, comparison.response_b.text)
+        console = _recording_console()
+        render_diff(
+            prompt="Test",
+            result=comparison,
+            diff_result=diff_result,
+            console=console,
+            semantic_score=None,
+        )
+        output = console.export_text()
+        assert "Semantic" not in output
+

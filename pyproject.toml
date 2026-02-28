@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-diff"
-version = "0.1.0"
+version = "0.3.0"
 description = "A CLI tool for comparing LLM outputs — semantically, visually, and at scale"
 readme = "README.md"
 license = { text = "MIT" }
@@ -30,6 +30,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "tomli>=2.0; python_version < '3.11'",
     "jinja2>=3.1",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,9 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-mock>=3.12",
+    "pytest-cov>=4.0",
     "ruff>=0.3",
+    "numpy>=1.24",
 ]
 
 [project.scripts]
@@ -53,6 +56,12 @@ Repository = "https://github.com/user/llm-diff"
 
 [tool.hatch.build.targets.wheel]
 packages = ["llm_diff"]
+artifacts = ["llm_diff/templates"]
+
+[tool.hatch.build]
+include = [
+    "llm_diff/**",
+]
 
 # --- Ruff (linting + formatting) ---
 [tool.ruff]

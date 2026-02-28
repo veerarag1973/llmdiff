@@ -83,7 +83,6 @@ class TestResolveInputs:
             "model_a": None,
             "model_b": None,
             "model": None,
-            "batch": None,
         }
         defaults.update(kwargs)
         return _resolve_inputs(**defaults)  # type: ignore[arg-type]
@@ -123,11 +122,6 @@ class TestResolveInputs:
         import click
         with pytest.raises(click.UsageError, match="Specify models"):
             self._call(prompt="Hello")
-
-    def test_batch_mode_raises_not_supported(self) -> None:
-        import click
-        with pytest.raises(click.UsageError, match="batch"):
-            self._call(batch="prompts.yml", model_a="a", model_b="b")
 
     def test_model_flag_without_prompt_files_raises(self) -> None:
         import click
@@ -209,7 +203,10 @@ class TestRenderJson:
         console = Console(no_color=True)
         _render_json(comparison, diff_result, console)
         payload = json.loads(capsys.readouterr().out)
-        expected_keys = {"model_a", "model_b", "similarity_score", "tokens", "latency_ms", "diff"}
+        expected_keys = {
+            "prompt", "model_a", "model_b", "similarity_score",
+            "tokens", "latency_ms", "diff",
+        }
         assert set(payload.keys()) == expected_keys
         assert "a" in payload["tokens"] and "b" in payload["tokens"]
         assert "a" in payload["latency_ms"] and "b" in payload["latency_ms"]
@@ -262,7 +259,7 @@ class TestMainCli:
     def test_version_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert "0.3.0" in result.output
 
     def test_help_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--help"])
@@ -318,13 +315,17 @@ class TestMainCli:
     def test_semantic_flag_accepted(
         self, runner: CliRunner, mock_cfg: LLMDiffConfig, mock_comparison: ComparisonResult
     ) -> None:
-        # --semantic flag sets mode but word diff is used as fallback in phase 1
-        result = self._invoke_with_mocks(
-            runner,
-            ["Hello world", "-a", "gpt-4o", "-b", "claude-3-5-sonnet", "--semantic"],
-            mock_cfg,
-            mock_comparison,
-        )
+        # --semantic flag adds similarity scoring in phase 2
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch("llm_diff.semantic.compute_semantic_similarity", return_value=0.75),
+        ):
+            result = runner.invoke(
+                main,
+                ["Hello world", "-a", "gpt-4o", "-b", "claude-3-5-sonnet", "--semantic"],
+                catch_exceptions=False,
+            )
         assert result.exit_code == 0
 
     def test_verbose_flag_shows_metadata(
@@ -441,10 +442,11 @@ class TestMainCli:
         )
         assert result.exit_code != 0
 
-    def test_batch_flag_exits_1_not_supported(self, runner: CliRunner) -> None:
+    def test_batch_missing_file_exits_1(self, runner: CliRunner) -> None:
+        """--batch with a non-existent file raises FileNotFoundError → exit 1."""
         result = runner.invoke(
             main,
-            ["--batch", "prompts.yml", "-a", "gpt-4o", "-b", "claude-3"],
+            ["--batch", "no_such_file.yml", "-a", "gpt-4o", "-b", "claude-3"],
         )
         assert result.exit_code == 1
 
@@ -492,3 +494,406 @@ class TestMainCli:
                 catch_exceptions=False,
             )
         assert result.exit_code == 130
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: _render_json — prompt field and semantic_score
+# ---------------------------------------------------------------------------
+
+
+class TestRenderJsonPhase2:
+    def test_json_includes_prompt_field(self, capsys: pytest.CaptureFixture) -> None:
+        comparison = _make_comparison()
+        diff_result = word_diff(comparison.response_a.text, comparison.response_b.text)
+        console = Console(no_color=True)
+        _render_json(comparison, diff_result, console, prompt="Explain recursion")
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["prompt"] == "Explain recursion"
+
+    def test_json_includes_semantic_score_when_provided(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        comparison = _make_comparison()
+        diff_result = word_diff(comparison.response_a.text, comparison.response_b.text)
+        console = Console(no_color=True)
+        _render_json(comparison, diff_result, console, prompt="p", semantic_score=0.7654)
+        payload = json.loads(capsys.readouterr().out)
+        assert "semantic_score" in payload
+        assert payload["semantic_score"] == pytest.approx(0.7654, abs=0.001)
+
+    def test_json_omits_semantic_score_when_none(self, capsys: pytest.CaptureFixture) -> None:
+        comparison = _make_comparison()
+        diff_result = word_diff(comparison.response_a.text, comparison.response_b.text)
+        console = Console(no_color=True)
+        _render_json(comparison, diff_result, console, prompt="p", semantic_score=None)
+        payload = json.loads(capsys.readouterr().out)
+        assert "semantic_score" not in payload
+
+    def test_json_prompt_default_is_empty_string(self, capsys: pytest.CaptureFixture) -> None:
+        comparison = _make_comparison()
+        diff_result = word_diff(comparison.response_a.text, comparison.response_b.text)
+        console = Console(no_color=True)
+        _render_json(comparison, diff_result, console)
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["prompt"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: CLI integration — semantic mode, --out, --save with report
+# ---------------------------------------------------------------------------
+
+
+class TestMainCliPhase2:
+    def _invoke_with_mocks(
+        self,
+        runner: CliRunner,
+        args: list,
+        cfg: LLMDiffConfig,
+        comparison: ComparisonResult,
+        extra_patches: dict | None = None,
+    ):
+        patches = {
+            "llm_diff.cli.compare_models": AsyncMock(return_value=comparison),
+            "llm_diff.cli.load_config": cfg,
+        }
+        if extra_patches:
+            patches.update(extra_patches)
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=comparison)),
+            patch("llm_diff.cli.load_config", return_value=cfg),
+        ):
+            return runner.invoke(main, args, catch_exceptions=False)
+
+    def test_semantic_mode_computes_similarity(
+        self, runner: CliRunner, mock_cfg: LLMDiffConfig, mock_comparison: ComparisonResult
+    ) -> None:
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_semantic_similarity",
+                return_value=0.82,
+            ) as mock_sem,
+        ):
+            result = runner.invoke(
+                main,
+                ["Hello", "-a", "gpt-4o", "-b", "claude-3", "--semantic"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        mock_sem.assert_called_once()
+
+    def test_json_mode_includes_prompt_in_output(
+        self, runner: CliRunner, mock_cfg: LLMDiffConfig, mock_comparison: ComparisonResult
+    ) -> None:
+        result = self._invoke_with_mocks(
+            runner,
+            ["My prompt", "-a", "gpt-4o", "-b", "claude-3", "--json"],
+            mock_cfg,
+            mock_comparison,
+        )
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["prompt"] == "My prompt"
+
+    def test_semantic_json_mode_includes_semantic_score(
+        self, runner: CliRunner, mock_cfg: LLMDiffConfig, mock_comparison: ComparisonResult
+    ) -> None:
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_semantic_similarity",
+                return_value=0.91,
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                ["Hello", "-a", "gpt-4o", "-b", "claude-3", "--semantic", "--json"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert "semantic_score" in payload
+        assert payload["semantic_score"] == pytest.approx(0.91, abs=0.001)
+
+    def test_out_flag_saves_html_report(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        tmp_path: Path,
+    ) -> None:
+        report_path = tmp_path / "report.html"
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                ["Hello", "-a", "gpt-4o", "-b", "claude-3", "--out", str(report_path)],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert report_path.exists()
+        assert "<!DOCTYPE html>" in report_path.read_text(encoding="utf-8")
+
+    def test_save_flag_creates_file_in_diffs_dir(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        tmp_path: Path,
+    ) -> None:
+        mock_cfg.save = False  # reset; --save flag will flip it
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.report.auto_save_report",
+                return_value=tmp_path / "report.html",
+            ) as mock_auto_save,
+        ):
+            result = runner.invoke(
+                main,
+                ["Hello", "-a", "gpt-4o", "-b", "claude-3", "--save"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        mock_auto_save.assert_called_once()
+
+    def test_semantic_import_error_exits_1(
+        self, runner: CliRunner, mock_cfg: LLMDiffConfig, mock_comparison: ComparisonResult
+    ) -> None:
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_semantic_similarity",
+                side_effect=ImportError("sentence-transformers not installed"),
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                ["Hello", "-a", "gpt-4o", "-b", "claude-3", "--semantic"],
+            )
+        assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: CLI integration — batch mode
+# ---------------------------------------------------------------------------
+
+
+class TestBatchCli:
+    """Integration tests for --batch mode."""
+
+    @pytest.fixture()
+    def batch_yaml(self, tmp_path: Path) -> Path:
+        """Minimal batch YAML with two plain prompts (no inputs)."""
+        f = tmp_path / "prompts.yml"
+        f.write_text(
+            "prompts:\n"
+            "  - id: p1\n"
+            "    text: 'First prompt'\n"
+            "  - id: p2\n"
+            "    text: 'Second prompt'\n",
+            encoding="utf-8",
+        )
+        return f
+
+    def test_batch_processes_all_items(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        batch_yaml: Path,
+    ) -> None:
+        """compare_models is called once per batch item."""
+        with (
+            patch(
+                "llm_diff.cli.compare_models",
+                new=AsyncMock(return_value=mock_comparison),
+            ) as mock_cmp,
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                ["--batch", str(batch_yaml), "-a", "gpt-4o", "-b", "claude-3"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert mock_cmp.call_count == 2
+
+    def test_batch_missing_models_exits_1(
+        self,
+        runner: CliRunner,
+        batch_yaml: Path,
+    ) -> None:
+        """--batch without model flags exits with code 1."""
+        result = runner.invoke(
+            main,
+            ["--batch", str(batch_yaml)],
+        )
+        assert result.exit_code == 1
+
+    def test_batch_with_out_saves_html_report(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        batch_yaml: Path,
+        tmp_path: Path,
+    ) -> None:
+        """--out writes a combined batch HTML report."""
+        report_path = tmp_path / "batch_report.html"
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "--batch", str(batch_yaml),
+                    "-a", "gpt-4o",
+                    "-b", "claude-3",
+                    "--out", str(report_path),
+                ],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert report_path.exists()
+        assert "<!DOCTYPE html>" in report_path.read_text(encoding="utf-8")
+
+    def test_batch_invalid_yaml_exits_1(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        tmp_path: Path,
+    ) -> None:
+        """A file with unparseable YAML exits with code 1."""
+        bad = tmp_path / "bad.yml"
+        bad.write_text("[unclosed bracket", encoding="utf-8")
+        with patch("llm_diff.cli.load_config", return_value=mock_cfg):
+            result = runner.invoke(
+                main,
+                ["--batch", str(bad), "-a", "gpt-4o", "-b", "claude-3"],
+            )
+        assert result.exit_code == 1
+
+    def test_batch_with_input_expansion(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        tmp_path: Path,
+    ) -> None:
+        """{input} placeholder is expanded with input file content."""
+        inp = tmp_path / "data.txt"
+        inp.write_text("sample data", encoding="utf-8")
+        batch_yaml = tmp_path / "prompts.yml"
+        batch_yaml.write_text(
+            "prompts:\n"
+            "  - id: summarize\n"
+            "    text: 'Summarize: {input}'\n"
+            f"    inputs: [{inp.name}]\n",
+            encoding="utf-8",
+        )
+        with (
+            patch(
+                "llm_diff.cli.compare_models",
+                new=AsyncMock(return_value=mock_comparison),
+            ) as mock_cmp,
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                ["--batch", str(batch_yaml), "-a", "gpt-4o", "-b", "claude-3"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        call_kwargs = mock_cmp.call_args.kwargs
+        assert "sample data" in call_kwargs["prompt_a"]
+
+    def test_batch_semantic_flag_calls_scorer_per_item(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        batch_yaml: Path,
+    ) -> None:
+        """compute_semantic_similarity is called once per batch item with --semantic."""
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_semantic_similarity",
+                return_value=0.75,
+            ) as mock_sem,
+        ):
+            result = runner.invoke(
+                main,
+                ["--batch", str(batch_yaml), "-a", "gpt-4o", "-b", "claude-3", "--semantic"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert mock_sem.call_count == 2
+
+    def test_batch_model_flag_accepted(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        batch_yaml: Path,
+    ) -> None:
+        """--model is accepted as shorthand for same-model batch comparison."""
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                ["--batch", str(batch_yaml), "--model", "gpt-4o"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+
+    def test_batch_shows_completion_summary(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        batch_yaml: Path,
+    ) -> None:
+        """Terminal output contains total item count after batch completes."""
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                ["--batch", str(batch_yaml), "-a", "gpt-4o", "-b", "claude-3"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert "2" in result.output
+
+    def test_batch_verbose_flag_shows_metadata(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        batch_yaml: Path,
+    ) -> None:
+        """--verbose shows API metadata table for each batch item."""
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+        ):
+            result = runner.invoke(
+                main,
+                ["--batch", str(batch_yaml), "-a", "gpt-4o", "-b", "claude-3", "--verbose"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert "Total tokens" in result.output

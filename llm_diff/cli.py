@@ -172,14 +172,14 @@ def _add_options(options: list) -> click.decorators.FC:  # pragma: no cover
 @click.option(
     "--mode",
     default="word",
-    type=click.Choice(["word", "semantic", "json"], case_sensitive=False),
+    type=click.Choice(["word", "json"], case_sensitive=False),
     show_default=True,
     help="Diff mode.",
 )
 @click.option(
-    "--semantic", "-s", "mode",
-    flag_value="semantic",
-    help="Shorthand for --mode semantic.",
+    "--semantic", "-s",
+    is_flag=True, default=False,
+    help="Compute and show embedding-based similarity score.",
 )
 @click.option(
     "--json", "-j", "mode",
@@ -235,6 +235,7 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     model_b: str | None,
     model: str | None,
     mode: str,
+    semantic: bool,
     batch: str | None,
     out: str | None,
     save: bool,
@@ -255,22 +256,6 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     _configure_logging(verbose)
     console = Console(no_color=no_color, stderr=False)
 
-    # ── Validate inputs ──────────────────────────────────────────────────────
-    try:
-        resolved_prompt_a, resolved_prompt_b, resolved_model_a, resolved_model_b = (
-            _resolve_inputs(
-                prompt=prompt,
-                prompt_a=prompt_a,
-                prompt_b=prompt_b,
-                model_a=model_a,
-                model_b=model_b,
-                model=model,
-                batch=batch,
-            )
-        )
-    except click.UsageError as exc:
-        _die(console, str(exc))
-
     # ── Load configuration ───────────────────────────────────────────────────
     cfg = load_config()
 
@@ -288,20 +273,59 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
 
     # ── Dispatch ─────────────────────────────────────────────────────────────
     try:
-        asyncio.run(
-            _run_diff(
-                prompt_a=resolved_prompt_a,
-                prompt_b=resolved_prompt_b,
-                model_a=resolved_model_a,
-                model_b=resolved_model_b,
-                mode=mode,
-                out=out,
-                config=cfg,
-                console=console,
-                verbose=verbose,
+        if batch:
+            # Resolve models for batch mode
+            resolved_ma: str = model or model_a or ""
+            resolved_mb: str = model or model_b or ""
+            if not resolved_ma or not resolved_mb:
+                _die(
+                    console,
+                    "--batch requires --model-a / -a and --model-b / -b "
+                    "(or --model for same-model comparison).",
+                )
+            asyncio.run(
+                _run_batch(
+                    batch=batch,
+                    model_a=resolved_ma,
+                    model_b=resolved_mb,
+                    mode=mode,
+                    semantic=semantic,
+                    out=out,
+                    config=cfg,
+                    console=console,
+                    verbose=verbose,
+                )
             )
-        )
-    except (ValueError, RuntimeError, TimeoutError) as exc:
+        else:
+            # ── Validate inputs (non-batch) ──────────────────────────────────
+            try:
+                resolved_prompt_a, resolved_prompt_b, resolved_model_a, resolved_model_b = (
+                    _resolve_inputs(
+                        prompt=prompt,
+                        prompt_a=prompt_a,
+                        prompt_b=prompt_b,
+                        model_a=model_a,
+                        model_b=model_b,
+                        model=model,
+                    )
+                )
+            except click.UsageError as exc:
+                _die(console, str(exc))
+            asyncio.run(
+                _run_diff(
+                    prompt_a=resolved_prompt_a,
+                    prompt_b=resolved_prompt_b,
+                    model_a=resolved_model_a,
+                    model_b=resolved_model_b,
+                    mode=mode,
+                    semantic=semantic,
+                    out=out,
+                    config=cfg,
+                    console=console,
+                    verbose=verbose,
+                )
+            )
+    except (ValueError, RuntimeError, TimeoutError, ImportError, FileNotFoundError) as exc:
         _die(console, str(exc))
     except KeyboardInterrupt:
         console.print("\n[dim]Interrupted.[/dim]")
@@ -321,16 +345,12 @@ def _resolve_inputs(
     model_a: str | None,
     model_b: str | None,
     model: str | None,
-    batch: str | None,
 ) -> tuple[str, str, str, str]:
     """Return ``(prompt_a_text, prompt_b_text, model_a, model_b)``.
 
     Raises :class:`click.UsageError` with a human-readable message if the
     flag combination is invalid.
     """
-    if batch:
-        raise click.UsageError("--batch mode is not supported in v0.1 (coming in v0.3).")
-
     # --- prompt resolution ---
     if prompt_a and prompt_b:
         resolved_pa = _read_file_arg(prompt_a, "--prompt-a")
@@ -386,6 +406,96 @@ def _read_file_arg(path: str, flag: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Async batch runner
+# ---------------------------------------------------------------------------
+
+
+async def _run_batch(
+    *,
+    batch: str,
+    model_a: str,
+    model_b: str,
+    mode: str,
+    semantic: bool,
+    out: str | None,
+    config: LLMDiffConfig,
+    console: Console,
+    verbose: bool,
+) -> None:
+    """Orchestrate the batch diff pipeline asynchronously.
+
+    Loads all :class:`~llm_diff.batch.BatchItem` objects from *batch*, runs the
+    full diff pipeline for each, renders terminal output, and optionally writes
+    a combined HTML report to *out*.
+    """
+    from llm_diff.batch import BatchResult, load_batch  # noqa: PLC0415
+
+    items = load_batch(batch)
+
+    batch_results: list[BatchResult] = []
+
+    for i, item in enumerate(items, 1):
+        console.rule(f"[dim][{i}/{len(items)}] {item.id}[/dim]")
+
+        with console.status("[dim]Calling models…[/dim]", spinner="dots"):
+            comparison: ComparisonResult = await compare_models(
+                prompt_a=item.prompt_text,
+                prompt_b=item.prompt_text,
+                model_a=model_a,
+                model_b=model_b,
+                config=config,
+            )
+
+        diff_result: DiffResult = word_diff(
+            comparison.response_a.text,
+            comparison.response_b.text,
+        )
+
+        semantic_score: float | None = None
+        if semantic:
+            from llm_diff.semantic import compute_semantic_similarity  # noqa: PLC0415
+
+            semantic_score = compute_semantic_similarity(
+                comparison.response_a.text,
+                comparison.response_b.text,
+            )
+
+        render_diff(
+            prompt=item.prompt_text[:60],
+            result=comparison,
+            diff_result=diff_result,
+            console=console,
+            semantic_score=semantic_score,
+        )
+
+        if verbose:
+            _render_verbose(comparison, console)
+
+        batch_results.append(
+            BatchResult(
+                item=item,
+                comparison=comparison,
+                diff_result=diff_result,
+                semantic_score=semantic_score,
+            )
+        )
+
+    console.rule("[dim]Batch complete[/dim]")
+    console.print(f"[dim]Processed {len(items)} prompt(s).[/dim]")
+
+    if out:
+        from llm_diff.report import build_batch_report, save_report  # noqa: PLC0415
+
+        html = build_batch_report(
+            results=batch_results,
+            model_a=model_a,
+            model_b=model_b,
+        )
+        saved = save_report(html, out)
+        console.print(f"[dim]Batch report saved → {saved}[/dim]")
+
+
+# ---------------------------------------------------------------------------
 # Async diff runner
 # ---------------------------------------------------------------------------
 
@@ -397,6 +507,7 @@ async def _run_diff(
     model_a: str,
     model_b: str,
     mode: str,
+    semantic: bool,
     out: str | None,
     config: LLMDiffConfig,
     console: Console,
@@ -422,19 +533,50 @@ async def _run_diff(
         comparison.response_b.text,
     )
 
+    # ── Semantic similarity ──────────────────────────────────────────────────
+    semantic_score: float | None = None
+    if semantic:
+        from llm_diff.semantic import compute_semantic_similarity  # noqa: PLC0415
+        semantic_score = compute_semantic_similarity(
+            comparison.response_a.text,
+            comparison.response_b.text,
+        )
+
     # ── Render ───────────────────────────────────────────────────────────────
     if mode == "json":
-        _render_json(comparison, diff_result, console)
+        _render_json(
+            comparison, diff_result, console,
+            prompt=display_prompt,
+            semantic_score=semantic_score,
+        )
     else:
         render_diff(
             prompt=display_prompt,
             result=comparison,
             diff_result=diff_result,
             console=console,
+            semantic_score=semantic_score,
         )
 
     if verbose:
         _render_verbose(comparison, console)
+
+    # ── Save HTML report ─────────────────────────────────────────────────────
+    if out or config.save:
+        from llm_diff.report import auto_save_report, build_report, save_report  # noqa: PLC0415
+
+        html = build_report(
+            prompt=display_prompt,
+            result=comparison,
+            diff_result=diff_result,
+            semantic_score=semantic_score,
+        )
+        if out:
+            saved = save_report(html, out)
+            console.print(f"[dim]Report saved → {saved}[/dim]")
+        if config.save:
+            saved = auto_save_report(html, model_a, model_b)
+            console.print(f"[dim]Report saved → {saved}[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -446,10 +588,14 @@ def _render_json(
     comparison: ComparisonResult,
     diff_result: DiffResult,
     console: Console,
+    *,
+    prompt: str = "",
+    semantic_score: float | None = None,
 ) -> None:
     ra = comparison.response_a
     rb = comparison.response_b
-    payload = {
+    payload: dict = {
+        "prompt": prompt,
         "model_a": ra.model,
         "model_b": rb.model,
         "similarity_score": round(diff_result.similarity, 4),
@@ -457,7 +603,9 @@ def _render_json(
         "latency_ms": {"a": ra.latency_ms, "b": rb.latency_ms},
         "diff": diff_result.to_dict()["chunks"],
     }
-    # Use print() not console so output is clean, unprettified JSON.
+    if semantic_score is not None:
+        payload["semantic_score"] = round(semantic_score, 4)
+    # Use click.echo not console so output is clean, unprettified JSON.
     click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
