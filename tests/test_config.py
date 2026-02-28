@@ -220,3 +220,64 @@ class TestGetProviderConfig:
         cfg = LLMDiffConfig()
         name, _ = get_provider_config(cfg, "some-random-model")
         assert name == "custom"
+
+
+# ---------------------------------------------------------------------------
+# LLMDiffConfig.__repr__
+# ---------------------------------------------------------------------------
+
+
+class TestLLMDiffConfigRepr:
+    def test_repr_contains_temperature(self) -> None:
+        cfg = LLMDiffConfig()
+        r = repr(cfg)
+        assert "temperature" in r
+
+    def test_repr_contains_max_tokens(self) -> None:
+        cfg = LLMDiffConfig()
+        r = repr(cfg)
+        assert "max_tokens" in r
+
+    def test_repr_contains_timeout(self) -> None:
+        cfg = LLMDiffConfig()
+        r = repr(cfg)
+        assert "timeout" in r
+
+
+# ---------------------------------------------------------------------------
+# load_config — base_url from TOML and env var
+# ---------------------------------------------------------------------------
+
+
+class TestLoadConfigBaseUrl:
+    def test_base_url_loaded_from_toml(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        toml_content = (
+            '[providers.openai]\n'
+            'api_key = "sk-toml"\n'
+            'base_url = "https://my-openai-proxy.example.com/v1"\n'
+        )
+        (tmp_path / ".llmdiff").write_text(toml_content, encoding="utf-8")
+        cfg = load_config(cwd=tmp_path, home=tmp_path)
+        assert cfg.openai.base_url == "https://my-openai-proxy.example.com/v1"
+
+    def test_base_url_loaded_from_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://env-proxy.example.com/v1")
+        cfg = load_config(cwd=tmp_path, home=tmp_path)
+        assert cfg.openai.base_url == "https://env-proxy.example.com/v1"
+
+    def test_env_var_base_url_overrides_toml(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://env-wins.example.com/v1")
+        toml_content = (
+            '[providers.openai]\n'
+            'base_url = "https://toml-loses.example.com/v1"\n'
+        )
+        (tmp_path / ".llmdiff").write_text(toml_content, encoding="utf-8")
+        cfg = load_config(cwd=tmp_path, home=tmp_path)
+        assert cfg.openai.base_url == "https://env-wins.example.com/v1"

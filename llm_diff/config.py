@@ -20,9 +20,9 @@ from typing import Any
 # tomllib is stdlib in Python 3.11+; fall back to the third-party tomli package.
 if sys.version_info >= (3, 11):
     import tomllib
-else:
-    try:
-        import tomli as tomllib  # type: ignore[no-redef]
+else:  # pragma: no cover
+    try:  # pragma: no cover
+        import tomli as tomllib  # type: ignore[no-redef]  # pragma: no cover
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "Python < 3.11 requires the 'tomli' package: pip install tomli"

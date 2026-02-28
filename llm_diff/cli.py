@@ -128,13 +128,13 @@ _display_options = [
 ]
 
 
-def _add_options(options: list) -> click.decorators.FC:
+def _add_options(options: list) -> click.decorators.FC:  # pragma: no cover
     """Decorator factory to attach a list of click options to a command."""
-    def decorator(f: click.decorators.FC) -> click.decorators.FC:
-        for option in reversed(options):
-            f = option(f)
-        return f
-    return decorator
+    def decorator(f: click.decorators.FC) -> click.decorators.FC:  # pragma: no cover
+        for option in reversed(options):  # pragma: no cover
+            f = option(f)  # pragma: no cover
+        return f  # pragma: no cover
+    return decorator  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------

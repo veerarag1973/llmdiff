@@ -294,3 +294,101 @@ class TestCompareModels:
                 model_b="claude-3-5-sonnet",
                 config=cfg,
             )
+
+
+# ---------------------------------------------------------------------------
+# ModelResponse.tokens property
+# ---------------------------------------------------------------------------
+
+
+class TestModelResponse:
+    def test_tokens_property_equals_total_tokens(self) -> None:
+        resp = ModelResponse(
+            model="gpt-4o",
+            text="hello",
+            prompt_tokens=5,
+            completion_tokens=15,
+            total_tokens=20,
+            latency_ms=50.0,
+            provider="openai",
+        )
+        assert resp.tokens == 20
+        assert resp.tokens == resp.total_tokens
+
+
+# ---------------------------------------------------------------------------
+# _call_model — retry loop and exhaustion
+# ---------------------------------------------------------------------------
+
+
+class TestCallModelRetry:
+    @pytest.fixture()
+    def provider_cfg(self) -> ProviderConfig:
+        return ProviderConfig(api_key="sk-test")
+
+    async def test_retryable_error_retried_then_succeeds(
+        self,
+        mock_response: MagicMock,
+        provider_cfg: ProviderConfig,
+    ) -> None:
+        """First attempt raises RateLimitError; second attempt succeeds."""
+        import openai
+
+        call_count = 0
+
+        async def flaky_create(*args, **kwargs):  # noqa: ANN002, ANN003
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise openai.RateLimitError("rate limit", response=MagicMock(), body={})
+            return mock_response
+
+        with (
+            patch("llm_diff.providers._make_client") as mock_make_client,
+            patch("llm_diff.providers.asyncio.sleep", new=AsyncMock()),
+        ):
+            client_mock = AsyncMock()
+            client_mock.chat.completions.create = flaky_create
+            client_mock.close = AsyncMock()
+            mock_make_client.return_value = client_mock
+
+            result = await _call_model(
+                model="gpt-4o",
+                prompt="Hello",
+                provider_cfg=provider_cfg,
+                provider_name="openai",
+                temperature=0.7,
+                max_tokens=100,
+                timeout=30,
+            )
+
+        assert isinstance(result, ModelResponse)
+        assert call_count == 2
+
+    async def test_all_retries_exhausted_raises_runtime_error(
+        self, provider_cfg: ProviderConfig
+    ) -> None:
+        """Three consecutive retryable errors should raise RuntimeError."""
+        import openai
+
+        with (
+            patch("llm_diff.providers._make_client") as mock_make_client,
+            patch("llm_diff.providers.asyncio.sleep", new=AsyncMock()),
+        ):
+            client_mock = AsyncMock()
+            client_mock.chat.completions.create = AsyncMock(
+                side_effect=openai.RateLimitError("rate limit", response=MagicMock(), body={})
+            )
+            client_mock.close = AsyncMock()
+            mock_make_client.return_value = client_mock
+
+            with pytest.raises(RuntimeError, match="All .* attempts failed"):
+                await _call_model(
+                    model="gpt-4o",
+                    prompt="Hello",
+                    provider_cfg=provider_cfg,
+                    provider_name="openai",
+                    temperature=0.7,
+                    max_tokens=100,
+                    timeout=30,
+                )
