@@ -37,6 +37,7 @@ multi-model (3–4 model) comparison, and structured JSON diff.
 | Guide | Description |
 |-------|-------------|
 | [Getting Started](docs/getting-started.md) | Installation, API keys, first diff |
+| [Tutorials](docs/tutorials/README.md) | Step-by-step learning path from first run to Python API (11 tutorials) |
 | [CLI Reference](docs/cli-reference.md) | All flags, option groups, exit codes, YAML format |
 | [Python API](docs/api.md) | All public functions, dataclasses, and field descriptions |
 | [Configuration](docs/configuration.md) | `.llmdiff` TOML schema, env vars, config priority |
@@ -63,9 +64,9 @@ llm-diff "Explain recursion." -a gpt-4o -b gpt-4o-mini --semantic --out report.h
 llm-diff --batch prompts.yml -a gpt-4o -b gpt-4o-mini --semantic --fail-under 0.85
 ```
 
-See [Getting Started](docs/getting-started.md) for more examples including
-prompt-diff mode, BLEU/ROUGE metrics, LLM-as-a-Judge, cost tracking, and
-multi-model comparison.
+See [Getting Started](docs/getting-started.md) for quick examples, or work through the
+[Tutorials](docs/tutorials/README.md) for a guided learning path covering prompt engineering,
+batch evaluation, CI/CD gating, LLM-as-a-Judge, cost tracking, and the Python API.
 
 ## Getting Help
 
