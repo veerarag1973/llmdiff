@@ -10,13 +10,50 @@ The whole ``sentence-transformers`` package is **optional**.  Install it with::
 
 If the package is absent and semantic mode is invoked, a clear
 :class:`ImportError` is raised rather than crashing silently.
+
+Public API
+----------
+- :class:`ParagraphScore`              — similarity score for a single paragraph pair.
+- :func:`compute_semantic_similarity`  — whole-text cosine similarity (0.0–1.0).
+- :func:`compute_paragraph_similarity` — paragraph-level cosine similarity list.
+- :func:`reset_model_cache`            — clear in-process model cache (tests only).
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Data classes
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ParagraphScore:
+    """Semantic similarity score for a single aligned paragraph pair.
+
+    Attributes
+    ----------
+    text_a:
+        Paragraph text from response A (may be empty if A has fewer paragraphs).
+    text_b:
+        Paragraph text from response B (may be empty if B has fewer paragraphs).
+    score:
+        Cosine similarity in ``[0.0, 1.0]``.  ``0.0`` when either paragraph is
+        absent (one side has fewer paragraphs than the other).
+    index:
+        Zero-based paragraph index.
+    """
+
+    text_a: str
+    text_b: str
+    score: float
+    index: int
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -102,6 +139,60 @@ def compute_semantic_similarity(text_a: str, text_b: str) -> float:
     similarity = _cosine_similarity(embeddings[0], embeddings[1])
     # Clamp to [0.0, 1.0] to guard against floating-point rounding (-1e-7 etc.)
     return max(0.0, min(1.0, similarity))
+
+
+def compute_paragraph_similarity(text_a: str, text_b: str) -> list[ParagraphScore]:
+    """Return per-paragraph semantic similarity scores.
+
+    Splits *text_a* and *text_b* on double-newlines (``\\n\\n``) to produce
+    paragraph lists, then aligns each pair by index.  When one side has fewer
+    paragraphs, the missing paragraphs are treated as empty strings and the
+    corresponding score is ``0.0``.
+
+    If either text contains no double-newline separators, the whole text is
+    treated as a single paragraph and a one-element list is returned.
+
+    Parameters
+    ----------
+    text_a, text_b:
+        The two response texts to compare paragraph-by-paragraph.
+
+    Returns
+    -------
+    list[ParagraphScore]
+        One entry per aligned paragraph pair, ordered by index.
+
+    Raises
+    ------
+    ImportError
+        If ``sentence-transformers`` is not installed.
+    """
+    paras_a = [p.strip() for p in text_a.split("\n\n") if p.strip()]
+    paras_b = [p.strip() for p in text_b.split("\n\n") if p.strip()]
+
+    # Fall back to a zero score when neither side has parseable paragraphs
+    # (which only occurs when both texts are empty/all-whitespace).
+    if not paras_a or not paras_b:
+        return [
+            ParagraphScore(
+                text_a=text_a.strip(),
+                text_b=text_b.strip(),
+                score=0.0,
+                index=0,
+            )
+        ]
+
+    # Pad the shorter side.
+    max_len = max(len(paras_a), len(paras_b))
+    paras_a += [""] * (max_len - len(paras_a))
+    paras_b += [""] * (max_len - len(paras_b))
+
+    scores: list[ParagraphScore] = []
+    for i, (pa, pb) in enumerate(zip(paras_a, paras_b)):
+        score = compute_semantic_similarity(pa, pb) if pa and pb else 0.0
+        scores.append(ParagraphScore(text_a=pa, text_b=pb, score=score, index=i))
+
+    return scores
 
 
 def reset_model_cache() -> None:

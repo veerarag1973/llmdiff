@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -259,7 +259,7 @@ class TestMainCli:
     def test_version_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.3.0" in result.output
+        assert "0.7.0" in result.output
 
     def test_help_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--help"])
@@ -897,3 +897,417 @@ class TestBatchCli:
             )
         assert result.exit_code == 0
         assert "Total tokens" in result.output
+
+    def test_batch_paragraph_flag_computes_paragraph_scores(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        batch_yaml: Path,
+    ) -> None:
+        """--paragraph in batch mode calls compute_paragraph_similarity per item."""
+        from llm_diff.semantic import ParagraphScore
+
+        para_scores = [ParagraphScore(text_a="A.", text_b="B.", score=0.7, index=0)]
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_paragraph_similarity",
+                return_value=para_scores,
+            ) as mock_para,
+            patch(
+                "llm_diff.semantic.compute_semantic_similarity",
+                return_value=0.70,
+            ),
+        ):
+            result = runner.invoke(
+                main,
+                ["--batch", str(batch_yaml), "-a", "gpt-4o", "-b", "claude-3", "--paragraph"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert mock_para.call_count == 2  # once per batch item
+
+
+# ---------------------------------------------------------------------------
+# --paragraph flag
+# ---------------------------------------------------------------------------
+
+
+class TestParagraphFlag:
+    """Tests for the --paragraph / -p CLI flag (paragraph-level semantic scoring)."""
+
+    @pytest.fixture()
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    @pytest.fixture()
+    def mock_cfg(self) -> LLMDiffConfig:
+        return LLMDiffConfig()
+
+    @pytest.fixture()
+    def mock_comparison(self) -> ComparisonResult:
+        return _make_comparison(
+            text_a="First paragraph.\n\nSecond paragraph.",
+            text_b="Erste Absatz.\n\nZweiter Absatz.",
+        )
+
+    def _para_scores(self):  # noqa: ANN201
+        from llm_diff.semantic import ParagraphScore
+
+        return [
+            ParagraphScore(
+                text_a="First paragraph.", text_b="Erste Absatz.", score=0.8, index=0
+            ),
+            ParagraphScore(
+                text_a="Second paragraph.", text_b="Zweiter Absatz.", score=0.7, index=1
+            ),
+        ]
+
+    def test_paragraph_flag_calls_compute_paragraph_similarity(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        para_scores = self._para_scores()
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_paragraph_similarity",
+                return_value=para_scores,
+            ) as mock_para,
+            patch("llm_diff.semantic.compute_semantic_similarity", return_value=0.75),
+        ):
+            result = runner.invoke(
+                main,
+                ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "--paragraph"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        mock_para.assert_called_once()
+
+    def test_paragraph_flag_shows_paragraph_table_in_output(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        para_scores = self._para_scores()
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_paragraph_similarity",
+                return_value=para_scores,
+            ),
+            patch("llm_diff.semantic.compute_semantic_similarity", return_value=0.75),
+        ):
+            result = runner.invoke(
+                main,
+                ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "--paragraph"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert "Paragraph Similarity" in result.output
+
+    def test_paragraph_flag_also_sets_semantic_score(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        """--paragraph calls compute_semantic_similarity for the overall score."""
+        para_scores = self._para_scores()
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_paragraph_similarity",
+                return_value=para_scores,
+            ),
+            patch(
+                "llm_diff.semantic.compute_semantic_similarity", return_value=0.75
+            ) as mock_sem,
+        ):
+            result = runner.invoke(
+                main,
+                ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "--paragraph"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        mock_sem.assert_called_once()
+        assert "Semantic" in result.output
+
+    def test_paragraph_flag_short_form(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        """The -p shorthand is equivalent to --paragraph."""
+        para_scores = self._para_scores()
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_paragraph_similarity",
+                return_value=para_scores,
+            ) as mock_para,
+            patch("llm_diff.semantic.compute_semantic_similarity", return_value=0.75),
+        ):
+            result = runner.invoke(
+                main,
+                ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "-p"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        mock_para.assert_called_once()
+
+    def test_paragraph_flag_saves_html_report_with_paragraph_section(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        tmp_path: Path,
+    ) -> None:
+        """--out with --paragraph produces HTML containing the paragraph section."""
+        out_file = tmp_path / "para_report.html"
+        para_scores = self._para_scores()
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch(
+                "llm_diff.semantic.compute_paragraph_similarity",
+                return_value=para_scores,
+            ),
+            patch("llm_diff.semantic.compute_semantic_similarity", return_value=0.75),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "Test prompt",
+                    "-a", "gpt-4o",
+                    "-b", "claude-3",
+                    "--paragraph",
+                    "--out", str(out_file),
+                ],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+        assert out_file.exists()
+        html = out_file.read_text(encoding="utf-8")
+        assert "Paragraph Similarity" in html
+
+    def test_version_updated_to_0_7_0(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--version"])
+        assert "0.7.0" in result.output
+
+
+# ---------------------------------------------------------------------------
+# --fail-under
+# ---------------------------------------------------------------------------
+
+
+class TestFailUnder:
+    """Tests for the --fail-under CI gate option."""
+
+    def _make_diff_result(self, similarity: float) -> MagicMock:
+        dr = MagicMock()
+        dr.similarity = similarity
+        dr.similarity_pct = f"{similarity:.2%}"
+        dr.chunks = []
+        return dr
+
+    def test_exits_1_when_word_score_below_threshold(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        """--fail-under triggers exit 1 when word similarity is below threshold."""
+        dr = self._make_diff_result(similarity=0.30)
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch("llm_diff.cli.word_diff", return_value=dr),
+        ):
+            result = runner.invoke(
+                main,
+                ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "--fail-under", "0.8"],
+            )
+        assert result.exit_code == 1
+
+    def test_passes_when_score_above_threshold(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        """Score above --fail-under does not cause exit 1."""
+        dr = self._make_diff_result(similarity=0.95)
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch("llm_diff.cli.word_diff", return_value=dr),
+        ):
+            result = runner.invoke(
+                main,
+                ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "--fail-under", "0.8"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+
+    def test_at_exact_threshold_passes(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        """Score exactly equal to --fail-under does not exit 1 (strictly less-than check)."""
+        dr = self._make_diff_result(similarity=0.80)
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch("llm_diff.cli.word_diff", return_value=dr),
+        ):
+            result = runner.invoke(
+                main,
+                ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "--fail-under", "0.8"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+
+    def test_uses_semantic_score_when_semantic_flag_set(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        """--fail-under uses semantic score when --semantic is also passed."""
+        dr = self._make_diff_result(similarity=0.95)  # word sim is above threshold
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch("llm_diff.cli.word_diff", return_value=dr),
+            patch("llm_diff.semantic.compute_semantic_similarity", return_value=0.20),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "Test prompt", "-a", "gpt-4o", "-b", "claude-3",
+                    "--semantic", "--fail-under", "0.5",
+                ],
+            )
+        assert result.exit_code == 1
+
+    def test_no_fail_under_ignores_low_score(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+    ) -> None:
+        """Without --fail-under, even a very low score does not cause exit 1."""
+        dr = self._make_diff_result(similarity=0.01)
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch("llm_diff.cli.word_diff", return_value=dr),
+        ):
+            result = runner.invoke(
+                main,
+                ["Test prompt", "-a", "gpt-4o", "-b", "claude-3"],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+
+    def test_batch_exits_1_when_item_below_threshold(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        tmp_path,
+    ) -> None:
+        """--fail-under with --batch exits 1 when any item is below the threshold."""
+        batch_yaml = tmp_path / "prompts.yml"
+        batch_yaml.write_text(
+            "prompts:\n"
+            "  - id: p1\n"
+            "    text: 'First prompt'\n",
+            encoding="utf-8",
+        )
+        dr = self._make_diff_result(similarity=0.20)
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch("llm_diff.cli.word_diff", return_value=dr),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "--batch", str(batch_yaml),
+                    "-a", "gpt-4o",
+                    "-b", "claude-3",
+                    "--fail-under", "0.8",
+                ],
+            )
+        assert result.exit_code == 1
+
+    def test_batch_passes_when_all_items_above_threshold(
+        self,
+        runner: CliRunner,
+        mock_cfg: LLMDiffConfig,
+        mock_comparison: ComparisonResult,
+        tmp_path,
+    ) -> None:
+        """--fail-under with --batch passes when all items exceed the threshold."""
+        batch_yaml = tmp_path / "prompts.yml"
+        batch_yaml.write_text(
+            "prompts:\n"
+            "  - id: p1\n"
+            "    text: 'First prompt'\n"
+            "  - id: p2\n"
+            "    text: 'Second prompt'\n",
+            encoding="utf-8",
+        )
+        dr = self._make_diff_result(similarity=0.99)
+        with (
+            patch("llm_diff.cli.compare_models", new=AsyncMock(return_value=mock_comparison)),
+            patch("llm_diff.cli.load_config", return_value=mock_cfg),
+            patch("llm_diff.cli.word_diff", return_value=dr),
+        ):
+            result = runner.invoke(
+                main,
+                [
+                    "--batch", str(batch_yaml),
+                    "-a", "gpt-4o",
+                    "-b", "claude-3",
+                    "--fail-under", "0.8",
+                ],
+                catch_exceptions=False,
+            )
+        assert result.exit_code == 0
+
+    def test_fail_under_rejects_invalid_value_above_1(
+        self,
+        runner: CliRunner,
+    ) -> None:
+        """--fail-under 1.5 is rejected by Click's FloatRange validator."""
+        result = runner.invoke(
+            main,
+            ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "--fail-under", "1.5"],
+        )
+        assert result.exit_code != 0
+
+    def test_fail_under_rejects_negative_value(
+        self,
+        runner: CliRunner,
+    ) -> None:
+        """--fail-under -0.1 is rejected by Click's FloatRange validator."""
+        result = runner.invoke(
+            main,
+            ["Test prompt", "-a", "gpt-4o", "-b", "claude-3", "--fail-under", "-0.1"],
+        )
+        assert result.exit_code != 0

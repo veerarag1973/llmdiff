@@ -473,3 +473,170 @@ class TestBuildBatchReport:
         """build_batch_report handles an empty results list without error."""
         html = build_batch_report(results=[], model_a="a", model_b="b")
         assert "<!DOCTYPE html>" in html
+
+
+# ---------------------------------------------------------------------------
+# build_report — paragraph scores
+# ---------------------------------------------------------------------------
+
+
+class TestBuildReportParagraphScores:
+    """Tests for the paragraph_scores parameter of build_report."""
+
+    def _make_ps(
+        self, text_a: str = "Para A.", text_b: str = "Para B.", score: float = 0.75, index: int = 0
+    ):  # noqa: ANN201
+        from llm_diff.semantic import ParagraphScore
+
+        return ParagraphScore(text_a=text_a, text_b=text_b, score=score, index=index)
+
+    def _build(self, paragraph_scores=None) -> str:  # noqa: ANN001
+        comparison = _make_comparison()
+        diff_result = word_diff(comparison.response_a.text, comparison.response_b.text)
+        return build_report(
+            prompt="Test",
+            result=comparison,
+            diff_result=diff_result,
+            paragraph_scores=paragraph_scores,
+        )
+
+    def test_no_paragraph_section_when_none(self) -> None:
+        html = self._build(paragraph_scores=None)
+        assert "Paragraph Similarity" not in html
+
+    def test_paragraph_section_present_when_scores_provided(self) -> None:
+        html = self._build(paragraph_scores=[self._make_ps()])
+        assert "Paragraph Similarity" in html
+
+    def test_paragraph_score_pct_in_html(self) -> None:
+        html = self._build(paragraph_scores=[self._make_ps(score=0.75)])
+        assert "75%" in html
+
+    def test_paragraph_text_a_in_html(self) -> None:
+        html = self._build(paragraph_scores=[self._make_ps(text_a="Unique para A text")])
+        assert "Unique para A text" in html
+
+    def test_paragraph_text_b_in_html(self) -> None:
+        html = self._build(paragraph_scores=[self._make_ps(text_b="Unique para B text")])
+        assert "Unique para B text" in html
+
+    def test_multiple_paragraph_scores(self) -> None:
+        ps = [
+            self._make_ps(text_a="First A", text_b="First B", score=0.9, index=0),
+            self._make_ps(text_a="Second A", text_b="Second B", score=0.5, index=1),
+        ]
+        html = self._build(paragraph_scores=ps)
+        assert "First A" in html
+        assert "Second B" in html
+
+    def test_score_high_css_class_used(self) -> None:
+        html = self._build(paragraph_scores=[self._make_ps(score=0.9)])
+        assert "score-high" in html
+
+    def test_score_low_css_class_used(self) -> None:
+        html = self._build(paragraph_scores=[self._make_ps(score=0.2)])
+        assert "score-low" in html
+
+    def test_score_mid_css_class_used(self) -> None:
+        html = self._build(paragraph_scores=[self._make_ps(score=0.65)])
+        assert "score-mid" in html
+
+    def test_responses_collapse_button_present(self) -> None:
+        """The expand/collapse button for responses is always present."""
+        html = self._build()
+        assert "toggleResponses" in html
+
+    def test_no_external_urls_with_paragraph_scores(self) -> None:
+        html = self._build(paragraph_scores=[self._make_ps()])
+        assert "https://" not in html
+        assert "http://" not in html
+
+    def test_paragraph_index_shown_in_html(self) -> None:
+        ps = [
+            self._make_ps(index=0),
+            self._make_ps(index=1),
+        ]
+        html = self._build(paragraph_scores=ps)
+        # 1-based index in template: § 1, § 2
+        assert ">1<" in html or "1</span>" in html
+
+
+# ---------------------------------------------------------------------------
+# build_batch_report — paragraph scores
+# ---------------------------------------------------------------------------
+
+
+class TestBuildBatchReportParagraph:
+    """Tests for paragraph_scores propagation in build_batch_report."""
+
+    def _make_ps(
+        self, text_a: str = "Para A.", text_b: str = "Para B.", score: float = 0.75, index: int = 0
+    ):  # noqa: ANN201
+        from llm_diff.semantic import ParagraphScore
+
+        return ParagraphScore(text_a=text_a, text_b=text_b, score=score, index=index)
+
+    def _make_result_with_para(
+        self, paragraph_scores=None
+    ) -> BatchResult:
+        cmp = _make_comparison()
+        dr = word_diff(cmp.response_a.text, cmp.response_b.text)
+        return BatchResult(
+            item=BatchItem(id="p1", prompt_text="Test"),
+            comparison=cmp,
+            diff_result=dr,
+            semantic_score=None,
+            paragraph_scores=paragraph_scores,
+        )
+
+    def test_paragraph_section_present_when_scores_provided(self) -> None:
+        ps = [self._make_ps()]
+        result = self._make_result_with_para(paragraph_scores=ps)
+        html = build_batch_report(results=[result], model_a="gpt-4o", model_b="claude-3")
+        assert "Paragraph" in html
+
+    def test_no_paragraph_section_when_no_scores(self) -> None:
+        result = self._make_result_with_para(paragraph_scores=None)
+        html = build_batch_report(results=[result], model_a="gpt-4o", model_b="claude-3")
+        # The para-section div should not be rendered when there are no paragraph scores
+        assert 'class="para-section"' not in html
+
+    def test_paragraph_score_pct_in_batch_html(self) -> None:
+        ps = [self._make_ps(score=0.80)]
+        result = self._make_result_with_para(paragraph_scores=ps)
+        html = build_batch_report(results=[result], model_a="gpt-4o", model_b="claude-3")
+        assert "80%" in html
+
+    def test_paragraph_text_a_in_batch_html(self) -> None:
+        ps = [self._make_ps(text_a="Unique batch para A")]
+        result = self._make_result_with_para(paragraph_scores=ps)
+        html = build_batch_report(results=[result], model_a="gpt-4o", model_b="claude-3")
+        assert "Unique batch para A" in html
+
+    def test_mixed_results_some_with_some_without_para(self) -> None:
+        """Reports with paragraph scores and without can appear in the same batch."""
+        ps = [self._make_ps()]
+        r1 = self._make_result_with_para(paragraph_scores=ps)
+        r2 = self._make_result_with_para(paragraph_scores=None)
+        r2.item = BatchItem(id="p2", prompt_text="Other")
+        html = build_batch_report(results=[r1, r2], model_a="gpt-4o", model_b="claude-3")
+        assert "<!DOCTYPE html>" in html
+
+    def test_para_score_high_css_class(self) -> None:
+        ps = [self._make_ps(score=0.9)]
+        result = self._make_result_with_para(paragraph_scores=ps)
+        html = build_batch_report(results=[result], model_a="gpt-4o", model_b="claude-3")
+        assert "score-high" in html
+
+    def test_para_score_low_css_class(self) -> None:
+        ps = [self._make_ps(score=0.2)]
+        result = self._make_result_with_para(paragraph_scores=ps)
+        html = build_batch_report(results=[result], model_a="gpt-4o", model_b="claude-3")
+        assert "score-low" in html
+
+    def test_no_external_urls_with_paragraph_scores(self) -> None:
+        ps = [self._make_ps()]
+        result = self._make_result_with_para(paragraph_scores=ps)
+        html = build_batch_report(results=[result], model_a="gpt-4o", model_b="claude-3")
+        assert "https://" not in html
+        assert "http://" not in html

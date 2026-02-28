@@ -19,13 +19,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
 
 from llm_diff import __version__
 
 if TYPE_CHECKING:
     from llm_diff.diff import DiffResult
     from llm_diff.providers import ComparisonResult
+    from llm_diff.semantic import ParagraphScore
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def _get_jinja_env() -> Environment:
     if _jinja_env is None:
         _jinja_env = Environment(
             loader=FileSystemLoader(str(_TEMPLATES_DIR)),
-            autoescape=select_autoescape(["html"]),
+            autoescape=True,  # always-on: covers .html.j2 extensions too
             keep_trailing_newline=True,
         )
     return _jinja_env
@@ -85,6 +86,7 @@ def build_report(
     result: ComparisonResult,
     diff_result: DiffResult,
     semantic_score: float | None = None,
+    paragraph_scores: list[ParagraphScore] | None = None,
     generated_at: str | None = None,
 ) -> str:
     """Render the HTML report template and return the HTML string.
@@ -100,6 +102,10 @@ def build_report(
     semantic_score:
         Optional cosine similarity score (0.0–1.0) from :mod:`~llm_diff.semantic`.
         When ``None``, the semantic section is hidden in the report.
+    paragraph_scores:
+        Optional list of per-paragraph scores from
+        :func:`~llm_diff.semantic.compute_paragraph_similarity`.  When provided,
+        a paragraph-level similarity section is rendered in the report.
     generated_at:
         Human-readable timestamp string.  Defaults to the current UTC time.
 
@@ -139,6 +145,22 @@ def build_report(
             _score_class(semantic_score) if semantic_score is not None else ""
         ),
         "chunks": chunks,
+        "has_paragraph_scores": paragraph_scores is not None,
+        "paragraph_scores": (
+            [
+                {
+                    "text_a": ps.text_a,
+                    "text_b": ps.text_b,
+                    "score": ps.score,
+                    "score_pct": f"{ps.score:.0%}",
+                    "score_class": _score_class(ps.score),
+                    "index": ps.index,
+                }
+                for ps in paragraph_scores
+            ]
+            if paragraph_scores is not None
+            else []
+        ),
     }
 
     env = _get_jinja_env()
@@ -243,6 +265,7 @@ def build_batch_report(
             {"type": chunk.type.value, "text": chunk.text}
             for chunk in r.diff_result.chunks
         ]
+        p_scores = getattr(r, "paragraph_scores", None)
         rendered.append(
             {
                 "id": r.item.id,
@@ -267,6 +290,22 @@ def build_batch_report(
                     if r.semantic_score is not None
                     else ""
                 ),
+                "has_paragraph_scores": p_scores is not None,
+                "paragraph_scores": (
+                    [
+                        {
+                            "text_a": ps.text_a,
+                            "text_b": ps.text_b,
+                            "score": ps.score,
+                            "score_pct": f"{ps.score:.0%}",
+                            "score_class": _score_class(ps.score),
+                            "index": ps.index,
+                        }
+                        for ps in p_scores
+                    ]
+                    if p_scores is not None
+                    else []
+                ),
                 "chunks": chunks,
             }
         )
@@ -283,6 +322,10 @@ def build_batch_report(
         sum(semantic_scores) / len(semantic_scores) if semantic_scores else None
     )
 
+    has_paragraph = any(
+        r.get("has_paragraph_scores") for r in rendered
+    )
+
     context = {
         "version": __version__,
         "generated_at": generated_at,
@@ -293,6 +336,7 @@ def build_batch_report(
         "avg_word_similarity_pct": _similarity_pct(avg_word),
         "avg_word_score_class": _score_class(avg_word),
         "has_semantic": avg_semantic is not None,
+        "has_paragraph": has_paragraph,
         "avg_semantic_similarity_pct": (
             _similarity_pct(avg_semantic) if avg_semantic is not None else ""
         ),

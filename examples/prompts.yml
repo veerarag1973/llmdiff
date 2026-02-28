@@ -1,0 +1,41 @@
+# llm-diff example batch file
+#
+# Run with:
+#   llm-diff --batch examples/prompts.yml -a gpt-4o -b gpt-3.5-turbo --out batch_report.html
+#
+# The {input} placeholder is replaced with the contents of each file listed
+# under `inputs`.  If no `inputs` key is present, the prompt is used verbatim.
+
+prompts:
+  # ── Plain prompts (no input file) ─────────────────────────────────────────
+
+  - id: explain-recursion
+    text: "Explain recursion in one sentence, suitable for a beginner programmer."
+
+  - id: explain-rest-api
+    text: "What is a REST API? Answer in two sentences."
+
+  - id: haiku
+    text: "Write a haiku about software debugging."
+
+  # ── Prompts with {input} template expansion ───────────────────────────────
+  # Each entry in `inputs` generates a separate batch item.
+  # Paths are relative to this YAML file.
+
+  - id: summarise
+    text: |
+      Summarise the following text in one sentence:
+
+      {input}
+    inputs:
+      - inputs/article_a.txt
+      - inputs/article_b.txt
+
+  - id: code-review
+    text: |
+      Review the following Python function for readability and suggest
+      one improvement:
+
+      {input}
+    inputs:
+      - inputs/func.py

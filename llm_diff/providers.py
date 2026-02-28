@@ -126,7 +126,17 @@ async def _call_model(
             )
             elapsed_ms = (time.monotonic() - start) * 1_000
 
+            if not response.choices:
+                raise RuntimeError(
+                    f"Model '{model}' returned an empty choices list. "
+                    "Check that the model name is correct and the provider is responding."
+                )
             choice = response.choices[0]
+            if choice.message.content is None:
+                raise RuntimeError(
+                    f"Model '{model}' returned a null message content. "
+                    "The provider may have refused the request or returned an incomplete response."
+                )
             usage = response.usage
 
             return ModelResponse(

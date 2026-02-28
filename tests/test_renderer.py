@@ -279,3 +279,75 @@ class TestRenderDiff:
         output = console.export_text()
         assert "Semantic" not in output
 
+
+# ---------------------------------------------------------------------------
+# render_diff — paragraph_scores
+# ---------------------------------------------------------------------------
+
+
+class TestRenderDiffParagraphScores:
+    """Tests for the paragraph_scores parameter of render_diff."""
+
+    def _make_ps(
+        self,
+        text_a: str = "Para A.",
+        text_b: str = "Para B.",
+        score: float = 0.75,
+        index: int = 0,
+    ):  # noqa: ANN201
+        from llm_diff.semantic import ParagraphScore
+
+        return ParagraphScore(text_a=text_a, text_b=text_b, score=score, index=index)
+
+    def _render_with_para(self, paragraph_scores=None) -> str:  # noqa: ANN001
+        comparison = _make_comparison(
+            text_a="First paragraph.\n\nSecond paragraph.",
+            text_b="Erste Absatz.\n\nZweiter Absatz.",
+        )
+        diff_result = word_diff(comparison.response_a.text, comparison.response_b.text)
+        console = _recording_console()
+        render_diff(
+            prompt="Test",
+            result=comparison,
+            diff_result=diff_result,
+            console=console,
+            paragraph_scores=paragraph_scores,
+        )
+        return console.export_text()
+
+    def test_no_paragraph_table_when_none(self) -> None:
+        output = self._render_with_para(paragraph_scores=None)
+        assert "Paragraph Similarity" not in output
+
+    def test_paragraph_table_shown_when_scores_provided(self) -> None:
+        output = self._render_with_para(paragraph_scores=[self._make_ps()])
+        assert "Paragraph Similarity" in output
+
+    def test_paragraph_score_pct_shown(self) -> None:
+        output = self._render_with_para(paragraph_scores=[self._make_ps(score=0.82)])
+        assert "82" in output
+
+    def test_paragraph_index_shown(self) -> None:
+        output = self._render_with_para(paragraph_scores=[self._make_ps(index=0)])
+        assert "1" in output
+
+    def test_multiple_paragraphs_shown(self) -> None:
+        ps = [
+            self._make_ps(text_a="Para one", text_b="Para uno", score=0.9, index=0),
+            self._make_ps(text_a="Para two", text_b="Para dos", score=0.6, index=1),
+        ]
+        output = self._render_with_para(paragraph_scores=ps)
+        assert "Paragraph Similarity" in output
+        assert "90" in output
+        assert "60" in output
+
+    def test_empty_paragraph_shown_as_empty_label(self) -> None:
+        ps = [self._make_ps(text_a="", text_b="some text", score=0.0, index=0)]
+        output = self._render_with_para(paragraph_scores=ps)
+        assert "(empty)" in output
+
+    def test_no_para_table_when_empty_list(self) -> None:
+        """Empty list is falsy — no table printed."""
+        output = self._render_with_para(paragraph_scores=[])
+        assert "Paragraph Similarity" not in output
+

@@ -69,12 +69,16 @@ class BatchResult:
         Word-level diff from :func:`~llm_diff.diff.word_diff`.
     semantic_score:
         Cosine similarity (0–1) when ``--semantic`` was requested; else ``None``.
+    paragraph_scores:
+        Per-paragraph similarity scores when ``--paragraph`` was requested;
+        else ``None``.
     """
 
     item: BatchItem
     comparison: ComparisonResult
     diff_result: DiffResult
     semantic_score: float | None = field(default=None)
+    paragraph_scores: list | None = field(default=None)
 
 
 # ---------------------------------------------------------------------------

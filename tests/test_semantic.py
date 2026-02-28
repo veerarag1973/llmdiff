@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from llm_diff.semantic import (
+    ParagraphScore,
     _cosine_similarity,
     _get_model,
+    compute_paragraph_similarity,
     compute_semantic_similarity,
     reset_model_cache,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -195,3 +192,155 @@ class TestComputeSemanticSimilarity:
         with patch("llm_diff.semantic._get_model", side_effect=ImportError("missing")):
             with pytest.raises(ImportError, match="missing"):
                 compute_semantic_similarity("a", "b")
+
+
+# ---------------------------------------------------------------------------
+# ParagraphScore
+# ---------------------------------------------------------------------------
+
+
+class TestParagraphScore:
+    def test_frozen_immutable(self) -> None:
+        ps = ParagraphScore(text_a="a", text_b="b", score=0.9, index=0)
+        with pytest.raises(AttributeError):
+            ps.score = 0.5  # type: ignore[misc]
+
+    def test_fields_stored_correctly(self) -> None:
+        ps = ParagraphScore(text_a="hello", text_b="world", score=0.42, index=3)
+        assert ps.text_a == "hello"
+        assert ps.text_b == "world"
+        assert ps.score == 0.42
+        assert ps.index == 3
+
+    def test_equality(self) -> None:
+        a = ParagraphScore(text_a="x", text_b="y", score=0.5, index=0)
+        b = ParagraphScore(text_a="x", text_b="y", score=0.5, index=0)
+        assert a == b
+
+    def test_inequality_by_score(self) -> None:
+        a = ParagraphScore(text_a="x", text_b="y", score=0.5, index=0)
+        b = ParagraphScore(text_a="x", text_b="y", score=0.6, index=0)
+        assert a != b
+
+    def test_inequality_by_index(self) -> None:
+        a = ParagraphScore(text_a="x", text_b="y", score=0.5, index=0)
+        b = ParagraphScore(text_a="x", text_b="y", score=0.5, index=1)
+        assert a != b
+
+    def test_zero_score_valid(self) -> None:
+        ps = ParagraphScore(text_a="", text_b="", score=0.0, index=0)
+        assert ps.score == 0.0
+
+
+# ---------------------------------------------------------------------------
+# compute_paragraph_similarity
+# ---------------------------------------------------------------------------
+
+
+class TestComputeParagraphSimilarity:
+    """All tests mock sentence-transformers so no model download is needed."""
+
+    def setup_method(self) -> None:
+        reset_model_cache()
+
+    def teardown_method(self) -> None:
+        reset_model_cache()
+
+    def _mock_similarity(self, score: float) -> MagicMock:
+        """Return a mock that replaces compute_semantic_similarity with a fixed score."""
+        return patch("llm_diff.semantic.compute_semantic_similarity", return_value=score)
+
+    def _mock_similarity_sequence(self, scores: list[float]) -> MagicMock:
+        """Return a mock that returns successive scores from a list."""
+        return patch(
+            "llm_diff.semantic.compute_semantic_similarity", side_effect=scores
+        )
+
+    def test_single_paragraph_returns_one_score(self) -> None:
+        with self._mock_similarity(0.8):
+            result = compute_paragraph_similarity("hello world", "hello earth")
+        assert len(result) == 1
+        assert result[0].index == 0
+
+    def test_single_paragraph_score_matches_mock(self) -> None:
+        with self._mock_similarity(0.73):
+            result = compute_paragraph_similarity("text a", "text b")
+        assert result[0].score == pytest.approx(0.73)
+
+    def test_two_paragraphs_returns_two_scores(self) -> None:
+        text_a = "First paragraph.\n\nSecond paragraph."
+        text_b = "Primo paragrafo.\n\nSecondo paragrafo."
+        with self._mock_similarity_sequence([0.9, 0.7]):
+            result = compute_paragraph_similarity(text_a, text_b)
+        assert len(result) == 2
+        assert result[0].index == 0
+        assert result[1].index == 1
+
+    def test_paragraph_texts_stored_correctly(self) -> None:
+        text_a = "Alpha.\n\nBeta."
+        text_b = "Alfa.\n\nBeta."
+        with self._mock_similarity_sequence([0.8, 0.95]):
+            result = compute_paragraph_similarity(text_a, text_b)
+        assert result[0].text_a == "Alpha."
+        assert result[0].text_b == "Alfa."
+        assert result[1].text_a == "Beta."
+        assert result[1].text_b == "Beta."
+
+    def test_unequal_paragraphs_a_longer(self) -> None:
+        """When A has more paragraphs, extra ones are paired with empty B text."""
+        text_a = "P1.\n\nP2.\n\nP3."
+        text_b = "Q1."
+        with self._mock_similarity(0.5):
+            result = compute_paragraph_similarity(text_a, text_b)
+        assert len(result) == 3
+        # Extra paragraphs (no B counterpart) have score 0.0
+        assert result[1].text_b == ""
+        assert result[1].score == 0.0
+        assert result[2].text_b == ""
+        assert result[2].score == 0.0
+
+    def test_unequal_paragraphs_b_longer(self) -> None:
+        """When B has more paragraphs, extra ones are paired with empty A text."""
+        text_a = "P1."
+        text_b = "Q1.\n\nQ2.\n\nQ3."
+        with self._mock_similarity(0.5):
+            result = compute_paragraph_similarity(text_a, text_b)
+        assert len(result) == 3
+        assert result[1].text_a == ""
+        assert result[1].score == 0.0
+
+    def test_empty_text_a_returns_score_0(self) -> None:
+        result = compute_paragraph_similarity("", "some text")
+        assert len(result) == 1
+        assert result[0].score == 0.0
+        assert result[0].text_a == ""
+
+    def test_empty_text_b_returns_score_0(self) -> None:
+        result = compute_paragraph_similarity("some text", "")
+        assert len(result) == 1
+        assert result[0].score == 0.0
+
+    def test_both_empty_returns_score_0(self) -> None:
+        result = compute_paragraph_similarity("", "")
+        assert len(result) == 1
+        assert result[0].score == 0.0
+
+    def test_fallback_when_no_double_newline(self) -> None:
+        """Single-newline text treated as single block."""
+        with self._mock_similarity(0.88):
+            result = compute_paragraph_similarity("line1\nline2", "line3\nline4")
+        assert len(result) == 1
+        assert result[0].score == pytest.approx(0.88)
+
+    def test_returns_paragraph_score_instances(self) -> None:
+        with self._mock_similarity(0.5):
+            result = compute_paragraph_similarity("abc", "xyz")
+        assert isinstance(result[0], ParagraphScore)
+
+    def test_whitespace_only_paragraphs_filtered(self) -> None:
+        """Blank/whitespace-only blocks between double-newlines are ignored."""
+        text_a = "Para1.\n\n   \n\nPara2."
+        text_b = "ParaX.\n\n   \n\nParaY."
+        with self._mock_similarity_sequence([0.9, 0.8]):
+            result = compute_paragraph_similarity(text_a, text_b)
+        assert len(result) == 2

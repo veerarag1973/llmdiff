@@ -281,3 +281,27 @@ class TestLoadConfigBaseUrl:
         (tmp_path / ".llmdiff").write_text(toml_content, encoding="utf-8")
         cfg = load_config(cwd=tmp_path, home=tmp_path)
         assert cfg.openai.base_url == "https://env-wins.example.com/v1"
+
+
+# ---------------------------------------------------------------------------
+# Telemetry field removed
+# ---------------------------------------------------------------------------
+
+
+class TestTelemetryRemoved:
+    def test_llmdiff_config_has_no_telemetry_attribute(self) -> None:
+        """telemetry field was removed in v0.5 — should not exist on the dataclass."""
+        cfg = LLMDiffConfig()
+        assert not hasattr(cfg, "telemetry"), (
+            "LLMDiffConfig still has a 'telemetry' field; it should have been removed in v0.5"
+        )
+
+    def test_toml_with_telemetry_key_is_gracefully_ignored(
+        self, tmp_path: Path
+    ) -> None:
+        """A .llmdiff file with a stale 'telemetry' key should not crash load_config."""
+        content = b"[defaults]\ntemperature = 0.5\ntelemetry = true\n"
+        (tmp_path / ".llmdiff").write_bytes(content)
+        cfg = load_config(cwd=tmp_path, home=tmp_path)
+        # Should succeed and still pick up the valid key
+        assert cfg.temperature == pytest.approx(0.5)

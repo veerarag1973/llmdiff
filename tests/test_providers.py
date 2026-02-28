@@ -392,3 +392,67 @@ class TestCallModelRetry:
                     max_tokens=100,
                     timeout=30,
                 )
+
+
+# ---------------------------------------------------------------------------
+# _call_model — response content guards
+# ---------------------------------------------------------------------------
+
+
+class TestCallModelResponseGuards:
+    @pytest.fixture()
+    def provider_cfg(self) -> ProviderConfig:
+        return ProviderConfig(api_key="sk-test")
+
+    async def test_empty_choices_raises_runtime_error(
+        self, provider_cfg: ProviderConfig
+    ) -> None:
+        """A response with no choices should raise RuntimeError with a clear message."""
+        empty_resp = MagicMock()
+        empty_resp.choices = []
+        empty_resp.usage = MagicMock()
+
+        with patch("llm_diff.providers._make_client") as mock_make_client:
+            client_mock = AsyncMock()
+            client_mock.chat.completions.create = AsyncMock(return_value=empty_resp)
+            client_mock.close = AsyncMock()
+            mock_make_client.return_value = client_mock
+
+            with pytest.raises(RuntimeError, match="empty choices list"):
+                await _call_model(
+                    model="gpt-4o",
+                    prompt="Hello",
+                    provider_cfg=provider_cfg,
+                    provider_name="openai",
+                    temperature=0.7,
+                    max_tokens=100,
+                    timeout=30,
+                )
+
+    async def test_null_message_content_raises_runtime_error(
+        self, provider_cfg: ProviderConfig
+    ) -> None:
+        """A response where choices[0].message.content is None should raise RuntimeError."""
+        null_choice = MagicMock()
+        null_choice.message.content = None
+
+        null_resp = MagicMock()
+        null_resp.choices = [null_choice]
+        null_resp.usage = MagicMock()
+
+        with patch("llm_diff.providers._make_client") as mock_make_client:
+            client_mock = AsyncMock()
+            client_mock.chat.completions.create = AsyncMock(return_value=null_resp)
+            client_mock.close = AsyncMock()
+            mock_make_client.return_value = client_mock
+
+            with pytest.raises(RuntimeError, match="null message content"):
+                await _call_model(
+                    model="gpt-4o",
+                    prompt="Hello",
+                    provider_cfg=provider_cfg,
+                    provider_name="openai",
+                    temperature=0.7,
+                    max_tokens=100,
+                    timeout=30,
+                )

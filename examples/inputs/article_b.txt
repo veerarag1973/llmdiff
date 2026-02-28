@@ -1,0 +1,7 @@
+Large language models (LLMs) are a category of foundation models trained on
+immense amounts of text data to understand and generate human-like text.
+They learned to predict the next word in sequences of text from vast corpora
+scraped from the internet, books, and other sources.  By scaling up the
+number of parameters and training data, researchers discovered that these
+models exhibited emergent capabilities — such as reasoning, translation, and
+code generation — that were not explicitly programmed.

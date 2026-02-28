@@ -18,7 +18,7 @@ from llm_diff.diff import DiffChunk, DiffResult, DiffType
 from llm_diff.providers import ComparisonResult
 
 if TYPE_CHECKING:  # pragma: no cover
-    pass
+    from llm_diff.semantic import ParagraphScore
 
 # Colour palette — chosen to be legible on both dark and light terminals.
 _COLOUR_INSERT = "bold green"
@@ -83,6 +83,7 @@ def render_diff(
     diff_result: DiffResult,
     console: Console,
     semantic_score: float | None = None,
+    paragraph_scores: list[ParagraphScore] | None = None,
 ) -> None:
     """Write the full diff output to *console*.
 
@@ -100,6 +101,10 @@ def render_diff(
     semantic_score:
         Optional semantic cosine similarity (0.0–1.0).  When provided, an
         extra "Semantic:" line is added to the footer.
+    paragraph_scores:
+        Optional list of :class:`~llm_diff.semantic.ParagraphScore` objects.
+        When provided, a per-paragraph similarity table is printed after the
+        footer.
     """
     ra = result.response_a
     rb = result.response_b
@@ -158,3 +163,30 @@ def render_diff(
     footer.append(f"{rb.latency_ms:.0f}ms", style="bold white")
     console.print(footer)
     console.print(Rule(style="dim cyan"))
+
+    # ── Paragraph similarity table ───────────────────────────────────────────
+    if paragraph_scores:
+        para_table = Table(
+            title="Paragraph Similarity",
+            show_header=True,
+            header_style="bold cyan",
+            show_lines=True,
+        )
+        para_table.add_column("§", style="dim", justify="right", no_wrap=True)
+        para_table.add_column("Score", justify="right", no_wrap=True)
+        para_table.add_column(f"[yellow]{ra.model}[/yellow] (preview)")
+        para_table.add_column(f"[magenta]{rb.model}[/magenta] (preview)")
+
+        for ps in paragraph_scores:
+            score_style = _score_colour(ps.score)
+            preview_a = (ps.text_a[:60] + "…") if len(ps.text_a) > 60 else ps.text_a
+            preview_b = (ps.text_b[:60] + "…") if len(ps.text_b) > 60 else ps.text_b
+            para_table.add_row(
+                str(ps.index + 1),
+                Text(f"{ps.score:.0%}", style=score_style),
+                preview_a or Text("(empty)", style="dim"),
+                preview_b or Text("(empty)", style="dim"),
+            )
+
+        console.print()
+        console.print(para_table)

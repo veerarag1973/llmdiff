@@ -72,9 +72,6 @@ class LLMDiffConfig:
     no_color: bool = False
     save: bool = False  # auto-save HTML to ./diffs/
 
-    # --- telemetry (opt-in only) ---
-    telemetry: bool = False
-
     def __repr__(self) -> str:
         return (
             f"LLMDiffConfig(temperature={self.temperature}, "
@@ -201,7 +198,6 @@ def load_config(
         cfg.timeout = int(defaults.get("timeout", cfg.timeout))
         cfg.no_color = bool(defaults.get("no_color", cfg.no_color))
         cfg.save = bool(defaults.get("save", cfg.save))
-        cfg.telemetry = bool(defaults.get("telemetry", cfg.telemetry))
 
     # Provider credentials from TOML, then overridden by env vars
     for provider_name in ("openai", "anthropic", "groq", "mistral", "custom"):

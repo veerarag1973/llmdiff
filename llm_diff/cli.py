@@ -34,107 +34,14 @@ _LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 def _configure_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(format=_LOG_FORMAT, level=level)
-    # Keep third-party libraries quieter even in verbose mode.
+    # Suppress third-party loggers that may emit auth headers or noisy output
+    # even when verbose mode is enabled.  httpx debug logs include Authorization
+    # headers, so keeping it at WARNING prevents accidental key leakage.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
-
-
-# ---------------------------------------------------------------------------
-# Shared options (reusable decorator group)
-# ---------------------------------------------------------------------------
-
-_model_options = [
-    click.option(
-        "--model-a", "-a", "model_a",
-        metavar="MODEL",
-        help="Model identifier for side A (e.g. gpt-4o)",
-    ),
-    click.option(
-        "--model-b", "-b", "model_b",
-        metavar="MODEL",
-        help="Model identifier for side B (e.g. claude-3-5-sonnet)",
-    ),
-    click.option(
-        "--model", "-m", "model",
-        metavar="MODEL",
-        default=None,
-        help="Use the same model for both sides (prompt-diff mode).",
-    ),
-]
-
-_output_options = [
-    click.option(
-        "--semantic", "-s", "mode",
-        flag_value="semantic",
-        help="Semantic diff using embedding similarity.",
-    ),
-    click.option(
-        "--json", "-j", "mode",
-        flag_value="json",
-        help="Output raw JSON diff to stdout.",
-    ),
-    click.option(
-        "--out", "-o", "out",
-        metavar="PATH",
-        default=None,
-        help="Save HTML report to this path.",
-    ),
-    click.option(
-        "--save",
-        is_flag=True,
-        default=False,
-        help="Auto-save HTML report to ./diffs/ directory.",
-    ),
-]
-
-_request_options = [
-    click.option(
-        "--temperature", "-t",
-        default=None,
-        type=float,
-        metavar="FLOAT",
-        help="Temperature (default 0.7).",
-    ),
-    click.option(
-        "--max-tokens",
-        default=None,
-        type=int,
-        metavar="INT",
-        help="Max tokens per response (default 1024).",
-    ),
-    click.option(
-        "--timeout",
-        default=None,
-        type=int,
-        metavar="SECS",
-        help="Request timeout in seconds (default 30).",
-    ),
-]
-
-_display_options = [
-    click.option(
-        "--no-color",
-        is_flag=True,
-        default=False,
-        help="Disable terminal colour output.",
-    ),
-    click.option(
-        "--verbose", "-v",
-        is_flag=True,
-        default=False,
-        help="Show full API metadata.",
-    ),
-]
-
-
-def _add_options(options: list) -> click.decorators.FC:  # pragma: no cover
-    """Decorator factory to attach a list of click options to a command."""
-    def decorator(f: click.decorators.FC) -> click.decorators.FC:  # pragma: no cover
-        for option in reversed(options):  # pragma: no cover
-            f = option(f)  # pragma: no cover
-        return f  # pragma: no cover
-    return decorator  # pragma: no cover
+    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+    logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +89,11 @@ def _add_options(options: list) -> click.decorators.FC:  # pragma: no cover
     help="Compute and show embedding-based similarity score.",
 )
 @click.option(
+    "--paragraph", "-p",
+    is_flag=True, default=False,
+    help="Compute paragraph-level semantic similarity (implies --semantic).",
+)
+@click.option(
     "--json", "-j", "mode",
     flag_value="json",
     help="Output raw JSON diff to stdout.",
@@ -226,6 +138,15 @@ def _add_options(options: list) -> click.decorators.FC:  # pragma: no cover
     is_flag=True, default=False,
     help="Show full API request/response metadata.",
 )
+@click.option(
+    "--fail-under",
+    default=None, type=click.FloatRange(0.0, 1.0), metavar="FLOAT",
+    help=(
+        "Exit with code 1 if the primary similarity score is below this threshold "
+        "(0.0–1.0). Uses semantic score when --semantic / --paragraph is set, "
+        "otherwise uses word similarity. Useful in CI pipelines."
+    ),
+)
 @click.version_option(version=__version__, prog_name="llm-diff")
 def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     prompt: str | None,
@@ -236,6 +157,7 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     model: str | None,
     mode: str,
     semantic: bool,
+    paragraph: bool,
     batch: str | None,
     out: str | None,
     save: bool,
@@ -244,6 +166,7 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     timeout: int | None,
     no_color: bool,
     verbose: bool,
+    fail_under: float | None,
 ) -> None:
     """Compare two LLM responses — semantically, visually, and at scale.
 
@@ -251,7 +174,9 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     Examples:
       llm-diff "Explain recursion" -a gpt-4o -b claude-3-5-sonnet
       llm-diff "Explain recursion" -a gpt-4o -b claude-3-5-sonnet --semantic
+      llm-diff "Explain recursion" -a gpt-4o -b claude-3-5-sonnet --paragraph
       llm-diff --prompt-a v1.txt --prompt-b v2.txt --model gpt-4o
+      llm-diff "Explain recursion" -a gpt-4o -b gpt-3.5-turbo --semantic --fail-under 0.8
     """
     _configure_logging(verbose)
     console = Console(no_color=no_color, stderr=False)
@@ -290,6 +215,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
                     model_b=resolved_mb,
                     mode=mode,
                     semantic=semantic,
+                    paragraph=paragraph,
+                    fail_under=fail_under,
                     out=out,
                     config=cfg,
                     console=console,
@@ -319,6 +246,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
                     model_b=resolved_model_b,
                     mode=mode,
                     semantic=semantic,
+                    paragraph=paragraph,
+                    fail_under=fail_under,
                     out=out,
                     config=cfg,
                     console=console,
@@ -417,6 +346,8 @@ async def _run_batch(
     model_b: str,
     mode: str,
     semantic: bool,
+    paragraph: bool,
+    fail_under: float | None,
     out: str | None,
     config: LLMDiffConfig,
     console: Console,
@@ -426,7 +357,8 @@ async def _run_batch(
 
     Loads all :class:`~llm_diff.batch.BatchItem` objects from *batch*, runs the
     full diff pipeline for each, renders terminal output, and optionally writes
-    a combined HTML report to *out*.
+    a combined HTML report to *out*.  When *fail_under* is set, exits with
+    code 1 if any item’s primary score is below the threshold.
     """
     from llm_diff.batch import BatchResult, load_batch  # noqa: PLC0415
 
@@ -452,13 +384,30 @@ async def _run_batch(
         )
 
         semantic_score: float | None = None
-        if semantic:
+        if paragraph:
+            from llm_diff.semantic import (  # noqa: PLC0415
+                compute_paragraph_similarity,
+                compute_semantic_similarity,
+            )
+
+            paragraph_scores = compute_paragraph_similarity(
+                comparison.response_a.text,
+                comparison.response_b.text,
+            )
+            semantic_score = compute_semantic_similarity(
+                comparison.response_a.text,
+                comparison.response_b.text,
+            )
+        elif semantic:
             from llm_diff.semantic import compute_semantic_similarity  # noqa: PLC0415
 
             semantic_score = compute_semantic_similarity(
                 comparison.response_a.text,
                 comparison.response_b.text,
             )
+            paragraph_scores = None
+        else:
+            paragraph_scores = None
 
         render_diff(
             prompt=item.prompt_text[:60],
@@ -466,6 +415,7 @@ async def _run_batch(
             diff_result=diff_result,
             console=console,
             semantic_score=semantic_score,
+            paragraph_scores=paragraph_scores,
         )
 
         if verbose:
@@ -477,11 +427,27 @@ async def _run_batch(
                 comparison=comparison,
                 diff_result=diff_result,
                 semantic_score=semantic_score,
+                paragraph_scores=paragraph_scores,
             )
         )
 
     console.rule("[dim]Batch complete[/dim]")
     console.print(f"[dim]Processed {len(items)} prompt(s).[/dim]")
+
+    # ── Fail-under check ─────────────────────────────────────────────────────
+    if fail_under is not None:
+        failing = [
+            r for r in batch_results
+            if (r.semantic_score if r.semantic_score is not None else r.diff_result.similarity)
+            < fail_under
+        ]
+        if failing:
+            err_console = Console(stderr=True)
+            err_console.print(
+                f"[bold red]--fail-under {fail_under:.2f}: "
+                f"{len(failing)}/{len(batch_results)} item(s) below threshold.[/bold red]"
+            )
+            sys.exit(1)
 
     if out:
         from llm_diff.report import build_batch_report, save_report  # noqa: PLC0415
@@ -508,6 +474,8 @@ async def _run_diff(
     model_b: str,
     mode: str,
     semantic: bool,
+    paragraph: bool,
+    fail_under: float | None,
     out: str | None,
     config: LLMDiffConfig,
     console: Console,
@@ -535,7 +503,22 @@ async def _run_diff(
 
     # ── Semantic similarity ──────────────────────────────────────────────────
     semantic_score: float | None = None
-    if semantic:
+    paragraph_scores = None
+    if paragraph:
+        from llm_diff.semantic import (  # noqa: PLC0415
+            compute_paragraph_similarity,
+            compute_semantic_similarity,
+        )
+        paragraph_scores = compute_paragraph_similarity(
+            comparison.response_a.text,
+            comparison.response_b.text,
+        )
+        # Overall semantic score is the whole-text similarity (not the para avg).
+        semantic_score = compute_semantic_similarity(
+            comparison.response_a.text,
+            comparison.response_b.text,
+        )
+    elif semantic:
         from llm_diff.semantic import compute_semantic_similarity  # noqa: PLC0415
         semantic_score = compute_semantic_similarity(
             comparison.response_a.text,
@@ -556,10 +539,24 @@ async def _run_diff(
             diff_result=diff_result,
             console=console,
             semantic_score=semantic_score,
+            paragraph_scores=paragraph_scores,
         )
 
     if verbose:
         _render_verbose(comparison, console)
+
+    # ── Fail-under check ─────────────────────────────────────────────────────
+    if fail_under is not None:
+        primary = (
+            semantic_score if semantic_score is not None else diff_result.similarity
+        )
+        if primary < fail_under:
+            err_console = Console(stderr=True)
+            err_console.print(
+                f"[bold red]--fail-under {fail_under:.2f}: "
+                f"score {primary:.4f} is below threshold.[/bold red]"
+            )
+            sys.exit(1)
 
     # ── Save HTML report ─────────────────────────────────────────────────────
     if out or config.save:
@@ -570,6 +567,7 @@ async def _run_diff(
             result=comparison,
             diff_result=diff_result,
             semantic_score=semantic_score,
+            paragraph_scores=paragraph_scores,
         )
         if out:
             saved = save_report(html, out)

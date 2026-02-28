@@ -92,7 +92,11 @@ class TestBatchItem:
 
 
 class TestBatchResult:
-    def _make(self, semantic_score: float | None = None) -> BatchResult:
+    def _make(
+        self,
+        semantic_score: float | None = None,
+        paragraph_scores: list | None = None,
+    ) -> BatchResult:
         item = BatchItem(id="t", prompt_text="test")
         comparison = MagicMock()
         diff_result = MagicMock()
@@ -101,6 +105,7 @@ class TestBatchResult:
             comparison=comparison,
             diff_result=diff_result,
             semantic_score=semantic_score,
+            paragraph_scores=paragraph_scores,
         )
 
     def test_semantic_score_defaults_to_none(self) -> None:
@@ -119,6 +124,26 @@ class TestBatchResult:
         br = self._make()
         br.semantic_score = 0.5
         assert br.semantic_score == pytest.approx(0.5)
+
+    def test_paragraph_scores_defaults_to_none(self) -> None:
+        br = self._make()
+        assert br.paragraph_scores is None
+
+    def test_paragraph_scores_stored(self) -> None:
+        ps = [MagicMock(), MagicMock()]
+        br = self._make(paragraph_scores=ps)
+        assert br.paragraph_scores is ps
+
+    def test_paragraph_scores_mutable(self) -> None:
+        br = self._make()
+        ps = [MagicMock()]
+        br.paragraph_scores = ps
+        assert br.paragraph_scores is ps
+
+    def test_has_paragraph_scores_field(self) -> None:
+        from dataclasses import fields as dc_fields
+        names = {f.name for f in dc_fields(BatchResult)}
+        assert "paragraph_scores" in names
 
 
 # ---------------------------------------------------------------------------

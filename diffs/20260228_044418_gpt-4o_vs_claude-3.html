@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>llm-diff — {{ model_a }} vs {{ model_b }}</title>
+  <title>llm-diff — gpt-4o vs claude-3-5-sonnet</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -224,43 +224,38 @@
   <!-- Header -->
   <div class="header">
     <h1>llm-diff Report</h1>
-    <div class="subtitle">Generated {{ generated_at }}  ·  llm-diff v{{ version }}</div>
+    <div class="subtitle">Generated 2026-02-28 04:44 UTC  ·  llm-diff v0.4.0</div>
   </div>
 
   <!-- Metadata grid -->
   <div class="meta-grid">
     <div class="meta-card">
       <div class="label">Model A</div>
-      <div class="value mono">{{ model_a }}</div>
+      <div class="value mono">gpt-4o</div>
     </div>
     <div class="meta-card">
       <div class="label">Model B</div>
-      <div class="value mono">{{ model_b }}</div>
+      <div class="value mono">claude-3-5-sonnet</div>
     </div>
     <div class="meta-card">
       <div class="label">Word Similarity</div>
-      <div class="value {{ word_score_class }}">{{ word_similarity_pct }}</div>
+      <div class="value score-mid">50.00%</div>
     </div>
-    {% if semantic_score is not none %}
-    <div class="meta-card">
-      <div class="label">Semantic Similarity</div>
-      <div class="value {{ semantic_score_class }}">{{ semantic_similarity_pct }}</div>
-    </div>
-    {% endif %}
+    
     <div class="meta-card">
       <div class="label">Tokens (A / B)</div>
-      <div class="value">{{ tokens_a }} / {{ tokens_b }}</div>
+      <div class="value">30 / 30</div>
     </div>
     <div class="meta-card">
       <div class="label">Latency (A / B)</div>
-      <div class="value">{{ latency_a_ms }}ms / {{ latency_b_ms }}ms</div>
+      <div class="value">100ms / 200ms</div>
     </div>
   </div>
 
   <!-- Prompt -->
   <div class="prompt-box">
     <div class="label">Prompt</div>
-    <div class="prompt-text">{{ prompt }}</div>
+    <div class="prompt-text">Hello</div>
   </div>
 
   <!-- Word diff -->
@@ -276,10 +271,7 @@
       <div class="legend-item"><div class="legend-dot del"></div> Model A deletions</div>
       <div class="legend-item"><div class="legend-dot eq"></div> Unchanged</div>
     </div>
-    <div class="diff-body" id="diff-body">{% for chunk in chunks %}{% if chunk.type == "equal"
-      %}<span class="eq">{{ chunk.text }}</span>{% elif chunk.type == "insert"
-      %}<span class="ins">{{ chunk.text }}</span>{% elif chunk.type == "delete"
-      %}<span class="del">{{ chunk.text }}</span>{% endif %}{% endfor %}</div>
+    <div class="diff-body" id="diff-body"><span class="eq">The </span><span class="del">quick </span><span class="ins">slow </span><span class="eq">brown </span><span class="del">fox</span><span class="ins">wolf</span></div>
   </div>
 
   <!-- Side-by-side responses -->
@@ -294,64 +286,28 @@
   <div id="responses-container">
   <div class="models-row">
     <div class="model-card a">
-      <div class="model-name">[A] {{ model_a }}</div>
-      <div class="response-text">{{ response_a }}</div>
+      <div class="model-name">[A] gpt-4o</div>
+      <div class="response-text">The quick brown fox</div>
       <div class="stats-row">
-        <span>Tokens: <strong>{{ tokens_a }}</strong></span>
-        <span>Latency: <strong>{{ latency_a_ms }}ms</strong></span>
+        <span>Tokens: <strong>30</strong></span>
+        <span>Latency: <strong>100ms</strong></span>
       </div>
     </div>
     <div class="model-card b">
-      <div class="model-name">[B] {{ model_b }}</div>
-      <div class="response-text">{{ response_b }}</div>
+      <div class="model-name">[B] claude-3-5-sonnet</div>
+      <div class="response-text">The slow brown wolf</div>
       <div class="stats-row">
-        <span>Tokens: <strong>{{ tokens_b }}</strong></span>
-        <span>Latency: <strong>{{ latency_b_ms }}ms</strong></span>
+        <span>Tokens: <strong>30</strong></span>
+        <span>Latency: <strong>200ms</strong></span>
       </div>
     </div>
   </div>
   </div>
 
-  {% if has_paragraph_scores %}
-  <!-- Paragraph Similarity -->
-  <div class="para-section">
-    <div class="diff-header">
-      <h2>Paragraph Similarity</h2>
-      <div class="toolbar">
-        <button class="btn active" id="btn-para" onclick="toggleParagraphs()">Collapse</button>
-      </div>
-    </div>
-    <div id="para-container">
-    <table class="para-table">
-      <thead>
-        <tr>
-          <th style="width:36px; text-align:center;">§</th>
-          <th style="width:80px; text-align:center;">Score</th>
-          <th>[A] {{ model_a }}</th>
-          <th>[B] {{ model_b }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for ps in paragraph_scores %}
-        <tr>
-          <td style="text-align:center;">
-            <span class="para-num">{{ ps.index + 1 }}</span>
-          </td>
-          <td style="text-align:center;">
-            <span class="score-pill {{ ps.score_class }}">{{ ps.score_pct }}</span>
-          </td>
-          <td>{% if ps.text_a %}{{ ps.text_a }}{% else %}<span class="para-text-empty">(no paragraph)</span>{% endif %}</td>
-          <td>{% if ps.text_b %}{{ ps.text_b }}{% else %}<span class="para-text-empty">(no paragraph)</span>{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-  </div>
-  {% endif %}
+  
 
   <div class="footer">
-    Generated by <strong>llm-diff</strong> v{{ version }} · No external resources · Fully offline
+    Generated by <strong>llm-diff</strong> v0.4.0 · No external resources · Fully offline
   </div>
 
 </div>
