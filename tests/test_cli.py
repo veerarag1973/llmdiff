@@ -259,7 +259,7 @@ class TestMainCli:
     def test_version_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.7.0" in result.output
+        assert "1.0.0" in result.output
 
     def test_help_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--help"])
@@ -1101,9 +1101,9 @@ class TestParagraphFlag:
         html = out_file.read_text(encoding="utf-8")
         assert "Paragraph Similarity" in html
 
-    def test_version_updated_to_0_7_0(self, runner: CliRunner) -> None:
+    def test_version_updated_to_1_0_0(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--version"])
-        assert "0.7.0" in result.output
+        assert "1.0.0" in result.output
 
 
 # ---------------------------------------------------------------------------

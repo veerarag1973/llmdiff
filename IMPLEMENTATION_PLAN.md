@@ -19,7 +19,7 @@
    - [Phase 5 — v0.5 Security & Code Cleanup (Week 7)](#phase-5--v05-security--code-cleanup-week-7) ✅
    - [Phase 6 — v0.6 Enterprise Features (Week 8)](#phase-6--v06-enterprise-features-week-8) ✅
    - [Phase 7 — v0.7 Documentation & Packaging (Week 9)](#phase-7--v07-documentation--packaging-week-9) ✅
-   - [Phase 8 — v0.8 Robustness & Testing (Week 10)](#phase-8--v08-robustness--testing-week-10)
+   - [Phase 8 — v0.8 Robustness & Testing (Week 10)](#phase-8--v08-robustness--testing-week-10) ✅
    - [Phase 9 — v1.0 Stable Release (Week 11–12)](#phase-9--v10-stable-release-week-1112)
 5. [Module Breakdown & Implementation Details](#5-module-breakdown--implementation-details)
 6. [CLI Interface Specification](#6-cli-interface-specification)
@@ -364,13 +364,13 @@ llm-diff/
 
 #### Tasks
 
-- [ ] **Integration tests with mocked API responses**
+- [x] **Integration tests with mocked API responses**
   - End-to-end tests exercising the full pipeline: CLI → config → providers → diff → render/report
   - Mock `AsyncOpenAI` at the HTTP level (not just function mocks)
   - Cover all diff modes: word-only, semantic, paragraph, JSON output, HTML report
   - Cover batch mode end-to-end
 
-- [ ] **GitHub Actions CI pipeline**
+- [x] **GitHub Actions CI pipeline**
   - `.github/workflows/ci.yml`:
     - Matrix: Python 3.9, 3.10, 3.11, 3.12, 3.13
     - Steps: install deps → ruff lint → pytest with coverage → coverage gate (100%)
@@ -379,18 +379,19 @@ llm-diff/
     - Trigger on version tag (`v*`)
     - Build and publish to PyPI via trusted publisher
 
-- [ ] **Edge-case hardening**
-  - Empty responses from models (zero-length text)
-  - Unicode / emoji in responses
-  - Very long responses (10,000+ words) — performance regression guard
-  - Malformed YAML in batch files (graceful error messages)
-  - Network timeout scenarios
+- [x] **Edge-case hardening**
+  - Empty responses from models (zero-length text) — warning logged, no crash
+  - Unicode / emoji in responses — CJK, Arabic, RTL, mathematical symbols
+  - Very long responses (10,000+ words) — performance regression guard (< 1s)
+  - Malformed YAML in batch files — tested via CLI path
+  - Network timeout scenarios — message contains model name + timeout value
 
-- [ ] **Regression tests for terminal output**
-  - Snapshot tests or golden-file tests for Rich terminal rendering
-  - Ensure colour codes and layout don't regress across versions
+- [x] **Regression tests for terminal output**
+  - Inline snapshot tests for Rich terminal rendering (header, scores, diff content)
+  - JSON schema regression tests
+  - No-color mode regression
 
-- [ ] **Tests** — maintain 100% coverage, 0 ruff errors
+- [x] **Tests** — 525 tests, 100% coverage, 0 ruff errors
 
 **v0.8 Success Metric**: CI green on all Python versions; no known edge-case crashes.
 
@@ -645,7 +646,7 @@ Measured at v1.0 launch and 30 days post-launch:
 | 7 | v0.5 Security | Autoescape fix, dead code removal, response guards | ✅ Complete |
 | 8 | v0.6 Enterprise | `--fail-under`, programmatic API, `--paragraph` in batch | ✅ Complete |
 | 9 | v0.7 Docs | LICENSE, README, CHANGELOG, CONTRIBUTING, PyPI metadata | ✅ Complete |
-| 10 | v0.8 Testing | Integration tests, GitHub Actions CI, edge-case hardening | 🔲 Pending |
+| 10 | v0.8 Testing | Integration tests, GitHub Actions CI, edge-case hardening | ✅ Complete |
 | 11–12 | v1.0 Stable | Nice-to-haves, final QA, PyPI publish, launch | 🔲 Pending |
 
 **Total: ~12 weeks to v1.0**

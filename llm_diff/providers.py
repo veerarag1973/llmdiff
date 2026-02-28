@@ -139,9 +139,16 @@ async def _call_model(
                 )
             usage = response.usage
 
+            text = (choice.message.content or "").strip()
+            if not text:
+                logger.warning(
+                    "Model '%s' returned an empty or whitespace-only response.",
+                    model,
+                )
+
             return ModelResponse(
                 model=model,
-                text=(choice.message.content or "").strip(),
+                text=text,
                 prompt_tokens=usage.prompt_tokens if usage else 0,
                 completion_tokens=usage.completion_tokens if usage else 0,
                 total_tokens=usage.total_tokens if usage else 0,
@@ -189,6 +196,65 @@ async def _call_model(
 
 
 # ---------------------------------------------------------------------------
+# Cache-aware call wrapper
+# ---------------------------------------------------------------------------
+
+
+async def _call_or_cache(
+    *,
+    model: str,
+    prompt: str,
+    provider_cfg: ProviderConfig,
+    provider_name: str,
+    temperature: float,
+    max_tokens: int,
+    timeout: int,
+    cache: object | None,
+) -> ModelResponse:
+    """Call :func:`_call_model` with optional cache lookup / store.
+
+    When *cache* is provided and contains a cached :class:`ModelResponse` for
+    the given ``(model, prompt, temperature, max_tokens)`` key, the cached
+    response is returned immediately without making a network call.  Otherwise
+    the model is called normally and the result is stored in the cache before
+    returning.
+
+    Parameters
+    ----------
+    cache:
+        A :class:`~llm_diff.cache.ResultCache` instance, or ``None`` to skip
+        caching entirely.  Accepted as ``object | None`` to avoid a circular
+        import between ``providers`` and ``cache``.
+    """
+    if cache is not None:
+        key: str = cache.make_key(model, prompt, temperature, max_tokens)  # type: ignore[attr-defined]
+        cached = cache.get(key)  # type: ignore[attr-defined]
+        if cached is not None:
+            return cached  # type: ignore[return-value]
+        response = await _call_model(
+            model=model,
+            prompt=prompt,
+            provider_cfg=provider_cfg,
+            provider_name=provider_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+        cache.put(key, response)  # type: ignore[attr-defined]
+        return response
+
+    return await _call_model(
+        model=model,
+        prompt=prompt,
+        provider_cfg=provider_cfg,
+        provider_name=provider_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout=timeout,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -200,6 +266,7 @@ async def compare_models(
     model_a: str,
     model_b: str,
     config: LLMDiffConfig,
+    cache: object | None = None,
 ) -> ComparisonResult:
     """Call both models **concurrently** and return a :class:`ComparisonResult`.
 
@@ -210,6 +277,13 @@ async def compare_models(
     Both API calls are fired at the same time using :func:`asyncio.gather`;
     the total wall-clock time equals the *slower* of the two calls, not
     their sum.
+
+    Parameters
+    ----------
+    cache:
+        Optional :class:`~llm_diff.cache.ResultCache` instance.  When
+        provided, each model call checks the cache before hitting the API and
+        stores the result afterwards.
 
     Raises
     ------
@@ -222,7 +296,7 @@ async def compare_models(
     provider_a_name, provider_a_cfg = _validate_provider(config, model_a)
     provider_b_name, provider_b_cfg = _validate_provider(config, model_b)
 
-    task_a = _call_model(
+    task_a = _call_or_cache(
         model=model_a,
         prompt=prompt_a,
         provider_cfg=provider_a_cfg,
@@ -230,8 +304,9 @@ async def compare_models(
         temperature=config.temperature,
         max_tokens=config.max_tokens,
         timeout=config.timeout,
+        cache=cache,
     )
-    task_b = _call_model(
+    task_b = _call_or_cache(
         model=model_b,
         prompt=prompt_b,
         provider_cfg=provider_b_cfg,
@@ -239,6 +314,7 @@ async def compare_models(
         temperature=config.temperature,
         max_tokens=config.max_tokens,
         timeout=config.timeout,
+        cache=cache,
     )
 
     response_a, response_b = await asyncio.gather(task_a, task_b)

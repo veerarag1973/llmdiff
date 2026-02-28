@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-diff"
-version = "0.7.0"
+version = "1.0.0"
 description = "A CLI tool for comparing LLM outputs — semantically, visually, and at scale"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
 keywords = ["llm", "diff", "cli", "openai", "claude", "prompt-testing"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",

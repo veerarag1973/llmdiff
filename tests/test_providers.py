@@ -456,3 +456,74 @@ class TestCallModelResponseGuards:
                     max_tokens=100,
                     timeout=30,
                 )
+
+
+# ---------------------------------------------------------------------------
+# _call_or_cache -- cache integration paths
+# ---------------------------------------------------------------------------
+
+
+class TestCallOrCache:
+    """Tests for the private _call_or_cache helper."""
+
+    async def test_cache_hit_skips_api_call(
+        self, tmp_path, base_config: LLMDiffConfig
+    ) -> None:
+        """Cache hit must return cached value without calling the API."""
+        from llm_diff.cache import ResultCache
+        from llm_diff.providers import _call_or_cache
+
+        cache = ResultCache(cache_dir=tmp_path)
+        pre_cached = ModelResponse(
+            model="gpt-4o",
+            text="Cached answer.",
+            prompt_tokens=5,
+            completion_tokens=3,
+            total_tokens=8,
+            latency_ms=1.0,
+            provider="openai",
+        )
+        provider_cfg = base_config.openai
+        key = cache.make_key("gpt-4o", "hello", 0.7, 512)
+        cache.put(key, pre_cached)
+
+        with patch("llm_diff.providers._make_client") as mock_client:
+            result = await _call_or_cache(
+                model="gpt-4o",
+                prompt="hello",
+                provider_cfg=provider_cfg,
+                provider_name="openai",
+                temperature=0.7,
+                max_tokens=512,
+                timeout=30,
+                cache=cache,
+            )
+
+        mock_client.assert_not_called()
+        assert result.text == "Cached answer."
+
+    async def test_cache_none_calls_api(
+        self, base_config: LLMDiffConfig, mock_response: MagicMock
+    ) -> None:
+        """When cache=None the API is called normally."""
+        from llm_diff.providers import _call_or_cache
+
+        provider_cfg = base_config.openai
+        with patch("llm_diff.providers._make_client") as mock_make_client:
+            client_mock = AsyncMock()
+            client_mock.chat.completions.create = AsyncMock(return_value=mock_response)
+            client_mock.close = AsyncMock()
+            mock_make_client.return_value = client_mock
+
+            result = await _call_or_cache(
+                model="gpt-4o",
+                prompt="hello",
+                provider_cfg=provider_cfg,
+                provider_name="openai",
+                temperature=0.7,
+                max_tokens=512,
+                timeout=30,
+                cache=None,
+            )
+
+        assert result.text == "This is a test response."

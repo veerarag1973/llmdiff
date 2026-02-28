@@ -1,4 +1,4 @@
-"""CLI entry point for llm-diff.
+﻿"""CLI entry point for llm-diff.
 
 Usage examples:
     llm-diff "Explain recursion" --a gpt-4o --b claude-3-5-sonnet
@@ -19,6 +19,7 @@ from rich.console import Console
 from rich.text import Text
 
 from llm_diff import __version__
+from llm_diff.cache import ResultCache
 from llm_diff.config import LLMDiffConfig, load_config
 from llm_diff.diff import DiffResult, word_diff
 from llm_diff.providers import ComparisonResult, compare_models
@@ -147,6 +148,16 @@ def _configure_logging(verbose: bool) -> None:
         "otherwise uses word similarity. Useful in CI pipelines."
     ),
 )
+@click.option(
+    "--concurrency",
+    default=4, type=int, metavar="INT",
+    help="Max concurrent API calls in batch mode (default: 4).",
+)
+@click.option(
+    "--no-cache",
+    is_flag=True, default=False,
+    help="Disable LLM response caching (always call the API).",
+)
 @click.version_option(version=__version__, prog_name="llm-diff")
 def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     prompt: str | None,
@@ -167,6 +178,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     no_color: bool,
     verbose: bool,
     fail_under: float | None,
+    concurrency: int,
+    no_cache: bool,
 ) -> None:
     """Compare two LLM responses — semantically, visually, and at scale.
 
@@ -196,6 +209,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     if save:
         cfg.save = True
 
+    _cache: ResultCache = ResultCache(enabled=not no_cache)
+
     # ── Dispatch ─────────────────────────────────────────────────────────────
     try:
         if batch:
@@ -221,6 +236,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
                     config=cfg,
                     console=console,
                     verbose=verbose,
+                    concurrency=concurrency,
+                    cache=_cache,
                 )
             )
         else:
@@ -252,6 +269,7 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
                     config=cfg,
                     console=console,
                     verbose=verbose,
+                    cache=_cache,
                 )
             )
     except (ValueError, RuntimeError, TimeoutError, ImportError, FileNotFoundError) as exc:
@@ -352,31 +370,46 @@ async def _run_batch(
     config: LLMDiffConfig,
     console: Console,
     verbose: bool,
+    concurrency: int = 4,
+    cache: object | None = None,
 ) -> None:
     """Orchestrate the batch diff pipeline asynchronously.
 
-    Loads all :class:`~llm_diff.batch.BatchItem` objects from *batch*, runs the
-    full diff pipeline for each, renders terminal output, and optionally writes
-    a combined HTML report to *out*.  When *fail_under* is set, exits with
-    code 1 if any item’s primary score is below the threshold.
+    Loads all :class:`~llm_diff.batch.BatchItem` objects from *batch*, fetches
+    model responses concurrently (up to *concurrency* simultaneous API calls),
+    renders terminal output for each, and optionally writes a combined HTML
+    report to *out*.  When *fail_under* is set, exits with code 1 if any
+    item's primary score is below the threshold.
     """
-    from llm_diff.batch import BatchResult, load_batch  # noqa: PLC0415
+    from llm_diff.batch import BatchItem, BatchResult, load_batch  # noqa: PLC0415
 
     items = load_batch(batch)
+    n = len(items)
+    sem = asyncio.Semaphore(concurrency)
 
-    batch_results: list[BatchResult] = []
-
-    for i, item in enumerate(items, 1):
-        console.rule(f"[dim][{i}/{len(items)}] {item.id}[/dim]")
-
-        with console.status("[dim]Calling models…[/dim]", spinner="dots"):
-            comparison: ComparisonResult = await compare_models(
+    async def _fetch(item: BatchItem) -> ComparisonResult:
+        async with sem:
+            return await compare_models(
                 prompt_a=item.prompt_text,
                 prompt_b=item.prompt_text,
                 model_a=model_a,
                 model_b=model_b,
                 config=config,
+                cache=cache,
             )
+
+    console.print(
+        f"[dim]Fetching responses for {n} prompt(s) "
+        f"(concurrency={concurrency})…[/dim]"
+    )
+    comparisons: list[ComparisonResult] = list(
+        await asyncio.gather(*[_fetch(item) for item in items])
+    )
+
+    batch_results: list[BatchResult] = []
+
+    for i, (item, comparison) in enumerate(zip(items, comparisons), 1):
+        console.rule(f"[dim][{i}/{n}] {item.id}[/dim]")
 
         diff_result: DiffResult = word_diff(
             comparison.response_a.text,
@@ -432,9 +465,9 @@ async def _run_batch(
         )
 
     console.rule("[dim]Batch complete[/dim]")
-    console.print(f"[dim]Processed {len(items)} prompt(s).[/dim]")
+    console.print(f"[dim]Processed {n} prompt(s).[/dim]")
 
-    # ── Fail-under check ─────────────────────────────────────────────────────
+    # ── Fail-under check ─────────────────────────────────────────
     if fail_under is not None:
         failing = [
             r for r in batch_results
@@ -480,6 +513,7 @@ async def _run_diff(
     config: LLMDiffConfig,
     console: Console,
     verbose: bool,
+    cache: object | None = None,
 ) -> None:
     """Orchestrate the full diff pipeline asynchronously."""
     # Prompt shown in the header is the shared prompt when both are identical.
@@ -493,6 +527,7 @@ async def _run_diff(
             model_a=model_a,
             model_b=model_b,
             config=config,
+            cache=cache,
         )
 
     # ── Compute diff ─────────────────────────────────────────────────────────

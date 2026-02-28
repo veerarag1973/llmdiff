@@ -11,6 +11,60 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.0] — 2026-03-01
+
+### Added
+- **Batch concurrency** (`--concurrency INT`, default 4) — `_run_batch` now
+  fires all API calls concurrently via `asyncio.Semaphore` + `asyncio.gather`,
+  cutting wall-clock time for large batch files by up to `N×` (where N is the
+  concurrency limit).
+- **Response caching** (`--no-cache` flag disables) — `ResultCache` persists
+  `ModelResponse` objects on disk under `~/.cache/llm-diff/` keyed by
+  SHA-256(`model + prompt + temperature + max_tokens`).  Re-running the same
+  prompt/model combination returns the cached result without an API call.
+  Pass `--no-cache` to bypass both reads and writes.
+- `llm_diff.cache.ResultCache` — public class for programmatic cache access.
+- Comprehensive `tests/test_cache.py` achieving 100 % branch coverage of
+  `llm_diff/cache.py`.
+
+### Changed
+- Version bumped to **1.0.0** (first stable release).
+- PyPI classifier updated from `Development Status :: 4 - Beta` to
+  `Development Status :: 5 - Production/Stable`.
+
+### Fixed
+- Nothing
+
+---
+
+## [0.8.0] — 2026-02-28
+
+### Added
+- **Integration tests** (`tests/test_integration.py`) — full end-to-end CLI
+  pipeline tests; `AsyncOpenAI` mocked at the class level (no real HTTP calls);
+  covers word mode, JSON mode, HTML report, verbose mode, batch mode, fail-under,
+  and error-handling paths (~55 tests)
+- **Edge-case tests** (`tests/test_edge_cases.py`) — empty/whitespace model
+  responses, Unicode/emoji/CJK/Arabic inputs, 10 000-word performance regression
+  guard, network timeout message assertions, malformed YAML surfaced via CLI (~40 tests)
+- **Regression tests** (`tests/test_regression.py`) — snapshot-style checks for
+  terminal output structure (header, similarity %, word counts, diff chunks) and
+  JSON schema stability (~35 tests)
+- **GitHub Actions CI** (`.github/workflows/ci.yml`) — matrix build on Python
+  3.9–3.13; runs ruff → pytest (100% coverage gate); triggers on push/PR to `main`
+- **GitHub Actions publish** (`.github/workflows/publish.yml`) — builds wheel +
+  sdist and publishes to PyPI via OIDC trusted publisher on version tags (`v*`)
+
+### Changed
+- `providers._call_model`: logs a `WARNING` when a model returns an empty or
+  whitespace-only response instead of silently returning `text=""`
+- Version bumped to **0.8.0**
+
+### Fixed
+- Nothing
+
+---
+
 ## [0.7.0] — 2026-02-28
 
 ### Added

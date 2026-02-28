@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.7.0"
+__version__ = "1.0.0"
 
 from llm_diff.api import ComparisonReport, compare, compare_batch, compare_prompts
 
