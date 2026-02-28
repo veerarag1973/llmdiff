@@ -100,6 +100,8 @@ class ComparisonReport:
     diff_result: DiffResult
     semantic_score: float | None = field(default=None)
     paragraph_scores: list[ParagraphScore] | None = field(default=None)
+    bleu_score: float | None = field(default=None)
+    rouge_l_score: float | None = field(default=None)
     html_report: str | None = field(default=None)
 
     # ------------------------------------------------------------------
@@ -132,6 +134,8 @@ async def compare(
     model_b: str,
     semantic: bool = False,
     paragraph: bool = False,
+    bleu: bool = False,
+    rouge: bool = False,
     build_html: bool = False,
     config: LLMDiffConfig | None = None,
     temperature: float | None = None,
@@ -158,6 +162,10 @@ async def compare(
         ``sentence-transformers``.  Requires the ``[semantic]`` extra.
     paragraph:
         When ``True``, compute paragraph-level similarity (implies *semantic*).
+    bleu:
+        When ``True``, compute a sentence-level BLEU score (n-gram precision).
+    rouge:
+        When ``True``, compute a ROUGE-L F1 score (longest common subsequence).
     build_html:
         When ``True``, render and attach a fully self-contained HTML report.
     config:
@@ -190,6 +198,10 @@ async def compare(
         comparison, semantic=semantic, paragraph=paragraph
     )
 
+    bleu_score, rouge_l_score = _compute_metrics(
+        comparison, bleu=bleu, rouge=rouge
+    )
+
     html_report: str | None = None
     if build_html:
         from llm_diff.report import build_report  # noqa: PLC0415
@@ -200,6 +212,8 @@ async def compare(
             diff_result=diff_result,
             semantic_score=semantic_score,
             paragraph_scores=paragraph_scores,
+            bleu_score=bleu_score,
+            rouge_l_score=rouge_l_score,
         )
 
     return ComparisonReport(
@@ -209,6 +223,8 @@ async def compare(
         diff_result=diff_result,
         semantic_score=semantic_score,
         paragraph_scores=paragraph_scores,
+        bleu_score=bleu_score,
+        rouge_l_score=rouge_l_score,
         html_report=html_report,
     )
 
@@ -220,6 +236,8 @@ async def compare_prompts(
     model: str,
     semantic: bool = False,
     paragraph: bool = False,
+    bleu: bool = False,
+    rouge: bool = False,
     build_html: bool = False,
     config: LLMDiffConfig | None = None,
     temperature: float | None = None,
@@ -239,7 +257,7 @@ async def compare_prompts(
         Prompt sent to the model on side B.
     model:
         Model identifier used for both API calls.
-    semantic, paragraph, build_html, config, temperature, max_tokens, timeout:
+    semantic, paragraph, bleu, rouge, build_html, config, temperature, max_tokens, timeout:
         See :func:`compare`.
 
     Returns
@@ -262,6 +280,10 @@ async def compare_prompts(
         comparison, semantic=semantic, paragraph=paragraph
     )
 
+    bleu_score, rouge_l_score = _compute_metrics(
+        comparison, bleu=bleu, rouge=rouge
+    )
+
     display_prompt = (
         prompt_a if prompt_a == prompt_b else f"{prompt_a[:40]}…"
     )
@@ -276,6 +298,8 @@ async def compare_prompts(
             diff_result=diff_result,
             semantic_score=semantic_score,
             paragraph_scores=paragraph_scores,
+            bleu_score=bleu_score,
+            rouge_l_score=rouge_l_score,
         )
 
     return ComparisonReport(
@@ -285,6 +309,8 @@ async def compare_prompts(
         diff_result=diff_result,
         semantic_score=semantic_score,
         paragraph_scores=paragraph_scores,
+        bleu_score=bleu_score,
+        rouge_l_score=rouge_l_score,
         html_report=html_report,
     )
 
@@ -296,6 +322,8 @@ async def compare_batch(
     model_b: str,
     semantic: bool = False,
     paragraph: bool = False,
+    bleu: bool = False,
+    rouge: bool = False,
     build_html: bool = False,
     config: LLMDiffConfig | None = None,
     temperature: float | None = None,
@@ -316,7 +344,7 @@ async def compare_batch(
         Model identifier for side A.
     model_b:
         Model identifier for side B.
-    semantic, paragraph, build_html, config, temperature, max_tokens, timeout:
+    semantic, paragraph, bleu, rouge, build_html, config, temperature, max_tokens, timeout:
         See :func:`compare`.
 
     Returns
@@ -337,6 +365,8 @@ async def compare_batch(
             model_b=model_b,
             semantic=semantic,
             paragraph=paragraph,
+            bleu=bleu,
+            rouge=rouge,
             build_html=build_html,
             config=cfg,
         )
@@ -405,3 +435,33 @@ async def _compute_similarity(
         )
 
     return semantic_score, paragraph_scores
+
+
+def _compute_metrics(
+    comparison: ComparisonResult,
+    *,
+    bleu: bool,
+    rouge: bool,
+) -> tuple[float | None, float | None]:
+    """Compute BLEU / ROUGE-L for *comparison*.
+
+    Returns ``(bleu_score, rouge_l_score)`` where either may be ``None``
+    when the corresponding flag is ``False``.
+    """
+    bleu_score: float | None = None
+    rouge_l_score: float | None = None
+
+    text_a = comparison.response_a.text
+    text_b = comparison.response_b.text
+
+    if bleu:
+        from llm_diff.metrics import compute_bleu  # noqa: PLC0415
+
+        bleu_score = compute_bleu(text_a, text_b)
+
+    if rouge:
+        from llm_diff.metrics import compute_rouge_l  # noqa: PLC0415
+
+        rouge_l_score = compute_rouge_l(text_a, text_b)
+
+    return bleu_score, rouge_l_score

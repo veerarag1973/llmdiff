@@ -95,6 +95,16 @@ def _configure_logging(verbose: bool) -> None:
     help="Compute paragraph-level semantic similarity (implies --semantic).",
 )
 @click.option(
+    "--bleu",
+    is_flag=True, default=False,
+    help="Compute BLEU score (n-gram precision, no extra dependencies).",
+)
+@click.option(
+    "--rouge",
+    is_flag=True, default=False,
+    help="Compute ROUGE-L F1 score (longest common subsequence, no extra dependencies).",
+)
+@click.option(
     "--json", "-j", "mode",
     flag_value="json",
     help="Output raw JSON diff to stdout.",
@@ -169,6 +179,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     mode: str,
     semantic: bool,
     paragraph: bool,
+    bleu: bool,
+    rouge: bool,
     batch: str | None,
     out: str | None,
     save: bool,
@@ -231,6 +243,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
                     mode=mode,
                     semantic=semantic,
                     paragraph=paragraph,
+                    bleu=bleu,
+                    rouge=rouge,
                     fail_under=fail_under,
                     out=out,
                     config=cfg,
@@ -264,6 +278,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
                     mode=mode,
                     semantic=semantic,
                     paragraph=paragraph,
+                    bleu=bleu,
+                    rouge=rouge,
                     fail_under=fail_under,
                     out=out,
                     config=cfg,
@@ -365,6 +381,8 @@ async def _run_batch(
     mode: str,
     semantic: bool,
     paragraph: bool,
+    bleu: bool,
+    rouge: bool,
     fail_under: float | None,
     out: str | None,
     config: LLMDiffConfig,
@@ -442,6 +460,18 @@ async def _run_batch(
         else:
             paragraph_scores = None
 
+        bleu_score: float | None = None
+        rouge_l_score: float | None = None
+        if bleu or rouge:
+            from llm_diff.metrics import compute_bleu, compute_rouge_l  # noqa: PLC0415
+
+            text_a = comparison.response_a.text
+            text_b = comparison.response_b.text
+            if bleu:
+                bleu_score = compute_bleu(text_a, text_b)
+            if rouge:
+                rouge_l_score = compute_rouge_l(text_a, text_b)
+
         render_diff(
             prompt=item.prompt_text[:60],
             result=comparison,
@@ -449,6 +479,8 @@ async def _run_batch(
             console=console,
             semantic_score=semantic_score,
             paragraph_scores=paragraph_scores,
+            bleu_score=bleu_score,
+            rouge_l_score=rouge_l_score,
         )
 
         if verbose:
@@ -461,6 +493,8 @@ async def _run_batch(
                 diff_result=diff_result,
                 semantic_score=semantic_score,
                 paragraph_scores=paragraph_scores,
+                bleu_score=bleu_score,
+                rouge_l_score=rouge_l_score,
             )
         )
 
@@ -508,6 +542,8 @@ async def _run_diff(
     mode: str,
     semantic: bool,
     paragraph: bool,
+    bleu: bool,
+    rouge: bool,
     fail_under: float | None,
     out: str | None,
     config: LLMDiffConfig,
@@ -560,12 +596,27 @@ async def _run_diff(
             comparison.response_b.text,
         )
 
+    # ── BLEU / ROUGE-L ──────────────────────────────────────────────────────
+    bleu_score: float | None = None
+    rouge_l_score: float | None = None
+    if bleu or rouge:
+        from llm_diff.metrics import compute_bleu, compute_rouge_l  # noqa: PLC0415
+
+        text_a = comparison.response_a.text
+        text_b = comparison.response_b.text
+        if bleu:
+            bleu_score = compute_bleu(text_a, text_b)
+        if rouge:
+            rouge_l_score = compute_rouge_l(text_a, text_b)
+
     # ── Render ───────────────────────────────────────────────────────────────
     if mode == "json":
         _render_json(
             comparison, diff_result, console,
             prompt=display_prompt,
             semantic_score=semantic_score,
+            bleu_score=bleu_score,
+            rouge_l_score=rouge_l_score,
         )
     else:
         render_diff(
@@ -575,6 +626,8 @@ async def _run_diff(
             console=console,
             semantic_score=semantic_score,
             paragraph_scores=paragraph_scores,
+            bleu_score=bleu_score,
+            rouge_l_score=rouge_l_score,
         )
 
     if verbose:
@@ -603,6 +656,8 @@ async def _run_diff(
             diff_result=diff_result,
             semantic_score=semantic_score,
             paragraph_scores=paragraph_scores,
+            bleu_score=bleu_score,
+            rouge_l_score=rouge_l_score,
         )
         if out:
             saved = save_report(html, out)
@@ -624,6 +679,8 @@ def _render_json(
     *,
     prompt: str = "",
     semantic_score: float | None = None,
+    bleu_score: float | None = None,
+    rouge_l_score: float | None = None,
 ) -> None:
     ra = comparison.response_a
     rb = comparison.response_b
@@ -638,6 +695,10 @@ def _render_json(
     }
     if semantic_score is not None:
         payload["semantic_score"] = round(semantic_score, 4)
+    if bleu_score is not None:
+        payload["bleu_score"] = round(bleu_score, 4)
+    if rouge_l_score is not None:
+        payload["rouge_l_score"] = round(rouge_l_score, 4)
     # Use click.echo not console so output is clean, unprettified JSON.
     click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
 

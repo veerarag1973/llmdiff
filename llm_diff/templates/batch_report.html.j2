@@ -159,6 +159,18 @@
     <div class="lbl">Avg Semantic Similarity</div>
   </div>
   {% endif %}
+  {% if has_bleu %}
+  <div class="summary-stat {{ avg_bleu_score_class }}">
+    <div class="val">{{ avg_bleu_pct }}</div>
+    <div class="lbl">Avg BLEU</div>
+  </div>
+  {% endif %}
+  {% if has_rouge %}
+  <div class="summary-stat {{ avg_rouge_score_class }}">
+    <div class="val">{{ avg_rouge_pct }}</div>
+    <div class="lbl">Avg ROUGE-L</div>
+  </div>
+  {% endif %}
 </div>
 
 <nav class="toc" aria-label="Prompt index">
@@ -182,6 +194,12 @@
         <span class="score-pill {{ r.word_score_class }}">Word {{ r.word_similarity_pct }}</span>
         {% if r.semantic_score is not none %}
         <span class="score-pill {{ r.semantic_score_class }}">Semantic {{ r.semantic_similarity_pct }}</span>
+        {% endif %}
+        {% if r.bleu_score is not none %}
+        <span class="score-pill {{ r.bleu_score_class }}">BLEU {{ r.bleu_score_pct }}</span>
+        {% endif %}
+        {% if r.rouge_l_score is not none %}
+        <span class="score-pill {{ r.rouge_l_score_class }}">ROUGE-L {{ r.rouge_l_score_pct }}</span>
         {% endif %}
       </div>
     </div>

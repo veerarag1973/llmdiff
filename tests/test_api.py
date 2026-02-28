@@ -112,6 +112,8 @@ class TestComparisonReport:
             "diff_result",
             "semantic_score",
             "paragraph_scores",
+            "bleu_score",
+            "rouge_l_score",
             "html_report",
         }
 

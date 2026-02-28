@@ -22,13 +22,14 @@
   - [1. Compare two models on the same prompt](#1-compare-two-models-on-the-same-prompt)
   - [2. Add semantic similarity scoring](#2-add-semantic-similarity-scoring)
   - [3. Per-paragraph scoring](#3-per-paragraph-scoring)
-  - [4. Prompt-diff mode](#4-prompt-diff-mode)
-  - [5. Save an HTML report](#5-save-an-html-report)
-  - [6. JSON output](#6-json-output)
-  - [7. Batch mode](#7-batch-mode)
-  - [8. CI gate with --fail-under](#8-ci-gate-with---fail-under)
-  - [9. Result caching](#9-result-caching)
-  - [10. Verbose metadata](#10-verbose-metadata)
+  - [4. BLEU and ROUGE-L metrics](#4-bleu-and-rouge-l-metrics)
+  - [5. Prompt-diff mode](#5-prompt-diff-mode)
+  - [6. Save an HTML report](#6-save-an-html-report)
+  - [7. JSON output](#7-json-output)
+  - [8. Batch mode](#8-batch-mode)
+  - [9. CI gate with --fail-under](#9-ci-gate-with---fail-under)
+  - [10. Result caching](#10-result-caching)
+  - [11. Verbose metadata](#11-verbose-metadata)
 - [Full CLI Reference](#full-cli-reference)
 - [Programmatic API](#programmatic-api)
 - [CI/CD Integration](#cicd-integration)
@@ -103,6 +104,7 @@ You run one command. `llm-diff`:
 | **Batch evaluation** | Score all your prompts in one run with a summary table |
 | **Zero wasted API calls** | Response cache means re-running after tweaking settings costs nothing |
 | **CI integration** | `--fail-under 0.85` turns a model upgrade into a pass/fail regression gate |
+| **BLEU & ROUGE-L** | Industry-standard NLP metrics — zero extra dependencies, pure Python |
 | **Vendor agnostic** | OpenAI, Groq, Mistral, DeepSeek, Ollama, LM Studio — any OpenAI-compatible API |
 | **Scriptable** | Full Python library API with no shell dependency |
 
@@ -301,7 +303,46 @@ tell the whole story.
 
 ---
 
-### 4. Prompt-diff mode
+### 4. BLEU and ROUGE-L metrics
+
+Compute industry-standard NLP evaluation metrics with no extra dependencies:
+
+```bash
+llm-diff "Explain recursion in one sentence." \
+  -a gpt-4o -b gpt-3.5-turbo --bleu --rouge
+```
+
+Output:
+
+```
+  Word similarity:  61.3%
+  BLEU:             42.1%
+  ROUGE-L:          68.7%
+```
+
+- **BLEU** measures n-gram precision (how many phrases from B appear in A)
+  with a brevity penalty. Good for checking surface-level phrase overlap.
+- **ROUGE-L** measures the Longest Common Subsequence F1, capturing sentence-
+  level structural similarity without requiring consecutive matches.
+
+Both are pure Python, require zero extra packages, and run in under 10 ms.
+Combine them with `--semantic` for a full picture:
+
+```bash
+llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo \
+  --semantic --bleu --rouge
+```
+
+```
+  Word similarity:     61.3%
+  Semantic similarity: 92.7%
+  BLEU:                42.1%
+  ROUGE-L:             68.7%
+```
+
+---
+
+### 5. Prompt-diff mode
 
 Compare how two different prompts affect the same model:
 
@@ -334,7 +375,7 @@ actually change the output and by how much.
 
 ---
 
-### 5. Save an HTML report
+### 6. Save an HTML report
 
 ```bash
 llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo \
@@ -362,7 +403,7 @@ Or set `save = true` in your `.llmdiff` config.
 
 ---
 
-### 6. JSON output
+### 7. JSON output
 
 ```bash
 llm-diff "Hello." -a gpt-4o -b gpt-3.5-turbo --json
@@ -402,7 +443,7 @@ llm-diff "Hello." -a gpt-4o -b gpt-3.5-turbo --json | jq '.word_similarity'
 
 ---
 
-### 7. Batch mode
+### 8. Batch mode
 
 Evaluate a set of prompts across two models in one command.
 
@@ -462,7 +503,7 @@ A working example is in [`examples/prompts.yml`](examples/prompts.yml).
 
 ---
 
-### 8. CI gate with `--fail-under`
+### 9. CI gate with `--fail-under`
 
 Fail the command if similarity drops below a threshold:
 
@@ -505,7 +546,7 @@ Error: 1 prompt(s) failed the similarity threshold (0.80)
 
 ---
 
-### 9. Result caching
+### 10. Result caching
 
 By default `llm-diff` caches responses to `~/.cache/llm-diff/` keyed on
 `(model, prompt, temperature, max_tokens)`. Re-running the same diff is
@@ -532,7 +573,7 @@ llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo --no-cache
 
 ---
 
-### 10. Verbose metadata
+### 11. Verbose metadata
 
 ```bash
 llm-diff "Hello." -a gpt-4o -b gpt-3.5-turbo --verbose
@@ -581,6 +622,8 @@ Prompt sources:
 Scoring:
   -s, --semantic       Compute embedding-based cosine similarity score.
   -p, --paragraph      Per-paragraph similarity (implies --semantic).
+  --bleu               Compute BLEU score (n-gram precision, no extra deps).
+  --rouge              Compute ROUGE-L F1 score (LCS-based, no extra deps).
 
 Output:
   -j, --json           Output raw JSON to stdout.
@@ -683,6 +726,8 @@ for r in reports:
 | `diff_result` | `DiffResult` | Word-level diff chunks + similarity |
 | `semantic_score` | `float or None` | Whole-text cosine similarity (0-1) |
 | `paragraph_scores` | `list or None` | Per-paragraph similarity scores |
+| `bleu_score` | `float or None` | BLEU score (0-1), n-gram precision |
+| `rouge_l_score` | `float or None` | ROUGE-L F1 score (0-1), LCS-based |
 | `html_report` | `str or None` | Self-contained HTML (when `build_html=True`) |
 | `word_similarity` | `float` | Property — `diff_result.similarity` |
 | `primary_score` | `float` | Property — semantic if set, else word |

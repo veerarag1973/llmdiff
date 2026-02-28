@@ -87,6 +87,8 @@ def build_report(
     diff_result: DiffResult,
     semantic_score: float | None = None,
     paragraph_scores: list[ParagraphScore] | None = None,
+    bleu_score: float | None = None,
+    rouge_l_score: float | None = None,
     generated_at: str | None = None,
 ) -> str:
     """Render the HTML report template and return the HTML string.
@@ -106,6 +108,10 @@ def build_report(
         Optional list of per-paragraph scores from
         :func:`~llm_diff.semantic.compute_paragraph_similarity`.  When provided,
         a paragraph-level similarity section is rendered in the report.
+    bleu_score:
+        Optional BLEU score (0.0–1.0).  When ``None``, hidden in the report.
+    rouge_l_score:
+        Optional ROUGE-L F1 score (0.0–1.0).  When ``None``, hidden.
     generated_at:
         Human-readable timestamp string.  Defaults to the current UTC time.
 
@@ -160,6 +166,16 @@ def build_report(
             ]
             if paragraph_scores is not None
             else []
+        ),
+        "bleu_score": bleu_score,
+        "bleu_score_pct": (_similarity_pct(bleu_score) if bleu_score is not None else ""),
+        "bleu_score_class": (_score_class(bleu_score) if bleu_score is not None else ""),
+        "rouge_l_score": rouge_l_score,
+        "rouge_l_score_pct": (
+            _similarity_pct(rouge_l_score) if rouge_l_score is not None else ""
+        ),
+        "rouge_l_score_class": (
+            _score_class(rouge_l_score) if rouge_l_score is not None else ""
         ),
     }
 
@@ -266,6 +282,8 @@ def build_batch_report(
             for chunk in r.diff_result.chunks
         ]
         p_scores = getattr(r, "paragraph_scores", None)
+        r_bleu = getattr(r, "bleu_score", None)
+        r_rouge = getattr(r, "rouge_l_score", None)
         rendered.append(
             {
                 "id": r.item.id,
@@ -289,6 +307,20 @@ def build_batch_report(
                     _score_class(r.semantic_score)
                     if r.semantic_score is not None
                     else ""
+                ),
+                "bleu_score": r_bleu,
+                "bleu_score_pct": (
+                    _similarity_pct(r_bleu) if r_bleu is not None else ""
+                ),
+                "bleu_score_class": (
+                    _score_class(r_bleu) if r_bleu is not None else ""
+                ),
+                "rouge_l_score": r_rouge,
+                "rouge_l_score_pct": (
+                    _similarity_pct(r_rouge) if r_rouge is not None else ""
+                ),
+                "rouge_l_score_class": (
+                    _score_class(r_rouge) if r_rouge is not None else ""
                 ),
                 "has_paragraph_scores": p_scores is not None,
                 "paragraph_scores": (
@@ -322,6 +354,18 @@ def build_batch_report(
         sum(semantic_scores) / len(semantic_scores) if semantic_scores else None
     )
 
+    bleu_scores = [
+        getattr(r, "bleu_score", None) for r in results
+        if getattr(r, "bleu_score", None) is not None
+    ]
+    avg_bleu = sum(bleu_scores) / len(bleu_scores) if bleu_scores else None
+
+    rouge_scores = [
+        getattr(r, "rouge_l_score", None) for r in results
+        if getattr(r, "rouge_l_score", None) is not None
+    ]
+    avg_rouge = sum(rouge_scores) / len(rouge_scores) if rouge_scores else None
+
     has_paragraph = any(
         r.get("has_paragraph_scores") for r in rendered
     )
@@ -342,6 +386,14 @@ def build_batch_report(
         ),
         "avg_semantic_score_class": (
             _score_class(avg_semantic) if avg_semantic is not None else ""
+        ),
+        "has_bleu": avg_bleu is not None,
+        "avg_bleu_pct": _similarity_pct(avg_bleu) if avg_bleu is not None else "",
+        "avg_bleu_score_class": _score_class(avg_bleu) if avg_bleu is not None else "",
+        "has_rouge": avg_rouge is not None,
+        "avg_rouge_pct": _similarity_pct(avg_rouge) if avg_rouge is not None else "",
+        "avg_rouge_score_class": (
+            _score_class(avg_rouge) if avg_rouge is not None else ""
         ),
     }
 

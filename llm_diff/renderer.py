@@ -84,6 +84,8 @@ def render_diff(
     console: Console,
     semantic_score: float | None = None,
     paragraph_scores: list[ParagraphScore] | None = None,
+    bleu_score: float | None = None,
+    rouge_l_score: float | None = None,
 ) -> None:
     """Write the full diff output to *console*.
 
@@ -105,6 +107,10 @@ def render_diff(
         Optional list of :class:`~llm_diff.semantic.ParagraphScore` objects.
         When provided, a per-paragraph similarity table is printed after the
         footer.
+    bleu_score:
+        Optional BLEU score (0.0–1.0).
+    rouge_l_score:
+        Optional ROUGE-L F1 score (0.0–1.0).
     """
     ra = result.response_a
     rb = result.response_b
@@ -153,6 +159,14 @@ def render_diff(
         sem_style = _score_colour(semantic_score)
         footer.append("  |  Semantic: ", style="dim")
         footer.append(f"{semantic_score:.2%}", style=sem_style)
+    if bleu_score is not None:
+        bleu_style = _score_colour(bleu_score)
+        footer.append("  |  BLEU: ", style="dim")
+        footer.append(f"{bleu_score:.2%}", style=bleu_style)
+    if rouge_l_score is not None:
+        rouge_style = _score_colour(rouge_l_score)
+        footer.append("  |  ROUGE-L: ", style="dim")
+        footer.append(f"{rouge_l_score:.2%}", style=rouge_style)
     footer.append("  |  Tokens: ", style="dim")
     footer.append(f"{ra.total_tokens}", style="bold white")
     footer.append(" / ", style="dim")

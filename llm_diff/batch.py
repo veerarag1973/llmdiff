@@ -79,6 +79,8 @@ class BatchResult:
     diff_result: DiffResult
     semantic_score: float | None = field(default=None)
     paragraph_scores: list | None = field(default=None)
+    bleu_score: float | None = field(default=None)
+    rouge_l_score: float | None = field(default=None)
 
 
 # ---------------------------------------------------------------------------
