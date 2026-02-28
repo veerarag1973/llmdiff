@@ -1,0 +1,84 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-diff"
+version = "0.1.0"
+description = "A CLI tool for comparing LLM outputs — semantically, visually, and at scale"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+keywords = ["llm", "diff", "cli", "openai", "claude", "prompt-testing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "click>=8.1",
+    "openai>=1.14",
+    "rich>=13.7",
+    "python-dotenv>=1.0",
+    "tomli>=2.0; python_version < '3.11'",
+    "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+semantic = [
+    "sentence-transformers>=2.6",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+    "ruff>=0.3",
+]
+
+[project.scripts]
+llm-diff = "llm_diff.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/user/llm-diff"
+Repository = "https://github.com/user/llm-diff"
+"Bug Tracker" = "https://github.com/user/llm-diff/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["llm_diff"]
+
+# --- Ruff (linting + formatting) ---
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "S",   # flake8-bandit (security)
+    "ANN", # flake8-annotations
+]
+ignore = [
+    "S101",    # Use of `assert` in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN", "S"]
+
+# --- Pytest ---
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
