@@ -53,10 +53,10 @@ dev = [
 llm-diff = "llm_diff.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/veerarag1973/llm-diff"
-Repository = "https://github.com/veerarag1973/llm-diff"
-"Bug Tracker" = "https://github.com/veerarag1973/llm-diff/issues"
-Documentation = "https://github.com/veerarag1973/llm-diff/tree/main/docs"
+Homepage = "https://github.com/veerarag1973/llmdiff"
+Repository = "https://github.com/veerarag1973/llmdiff"
+"Bug Tracker" = "https://github.com/veerarag1973/llmdiff/issues"
+Documentation = "https://github.com/veerarag1973/llmdiff/tree/main/docs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["llm_diff"]

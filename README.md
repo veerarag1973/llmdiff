@@ -2,9 +2,9 @@
 
 **A CLI tool and Python library for comparing LLM outputs — semantically, visually, and at scale.**
 
-[![PyPI](https://img.shields.io/pypi/v/llm-diff)](https://pypi.org/project/llm-diff/)
-[![CI](https://img.shields.io/github/actions/workflow/status/veerarag1973/llm-diff/ci.yml?branch=main)](https://github.com/veerarag1973/llm-diff/actions)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/veerarag1973/llm-diff)
+[![PyPI](https://img.shields.io/badge/PyPI-1.2.1-blue?logo=pypi&logoColor=white)](https://pypi.org/project/llm-diff/1.2.1/)
+[![Tests](https://img.shields.io/badge/tests-661%20passed-brightgreen)](https://pypi.org/project/llm-diff/)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://pypi.org/project/llm-diff/)
 [![Python](https://img.shields.io/pypi/pyversions/llm-diff)](https://pypi.org/project/llm-diff/)
 [![License](https://img.shields.io/pypi/l/llm-diff)](LICENSE)
 [![Status](https://img.shields.io/badge/status-production--stable-brightgreen)](CHANGELOG.md)
@@ -71,12 +71,15 @@ multi-model comparison.
 
 | | |
 |---|---|
-| **Bug reports** | [Open an issue](https://github.com/veerarag1973/llm-diff/issues/new?labels=bug&template=bug_report.md) |
-| **Feature requests** | [Open a feature request](https://github.com/veerarag1973/llm-diff/issues/new?labels=enhancement&template=feature_request.md) |
-| **Questions & discussion** | [GitHub Discussions](https://github.com/veerarag1973/llm-diff/discussions) |
-| **Open issues** | [github.com/veerarag1973/llm-diff/issues](https://github.com/veerarag1973/llm-diff/issues) |
+| **Bug reports** | [Open an issue on GitHub](https://github.com/veerarag1973/llmdiff/issues/new?labels=bug&template=bug_report.md) *(create the repo first — see note below)* |
+| **Feature requests** | [Open a feature request](https://github.com/veerarag1973/llmdiff/issues/new?labels=enhancement&template=feature_request.md) *(create the repo first)* |
+| **Questions & discussion** | [GitHub Discussions](https://github.com/veerarag1973/llmdiff/discussions) *(create the repo first)* |
+| **PyPI project page** | [pypi.org/project/llm-diff](https://pypi.org/project/llm-diff/) |
 | **Roadmap** | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
+
+> **Note:** The GitHub repository at `github.com/veerarag1973/llmdiff` has not been created yet.
+> Create it on GitHub, then push this project — the issue/discussion links above will become active.
 
 When filing a bug, please include: `llm-diff --version`, your OS, Python
 version, the full command you ran, and the complete error output.
