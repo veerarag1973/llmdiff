@@ -2,52 +2,115 @@
 
 **Compare LLM outputs — semantically, visually, and at scale.**
 
-`llm-diff` is a CLI tool and Python library that sends the same prompt to two
-different models (or the same model with two different prompts), diffs the
-responses word-by-word, and optionally scores them with sentence embeddings.
-Results are rendered as a rich terminal diff or exported as a fully
-self-contained HTML report.
-
 ![PyPI](https://img.shields.io/pypi/v/llm-diff)
 ![CI](https://img.shields.io/github/actions/workflow/status/user/llm-diff/ci.yml?branch=main)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![Python](https://img.shields.io/pypi/pyversions/llm-diff)
 ![License](https://img.shields.io/github/license/user/llm-diff)
+![Status](https://img.shields.io/badge/status-production--stable-brightgreen)
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
+- [The Problem](#the-problem)
+- [How llm-diff Solves It](#how-llm-diff-solves-it)
+- [What You Get](#what-you-get)
 - [Installation](#installation)
-- [Quick Start](#quick-start)
-- [CLI Reference](#cli-reference)
-- [Provider Configuration](#provider-configuration)
-- [Batch Mode](#batch-mode)
+- [Configuration](#configuration)
+- [Usage](#usage)
+  - [1. Compare two models on the same prompt](#1-compare-two-models-on-the-same-prompt)
+  - [2. Add semantic similarity scoring](#2-add-semantic-similarity-scoring)
+  - [3. Per-paragraph scoring](#3-per-paragraph-scoring)
+  - [4. Prompt-diff mode](#4-prompt-diff-mode)
+  - [5. Save an HTML report](#5-save-an-html-report)
+  - [6. JSON output](#6-json-output)
+  - [7. Batch mode](#7-batch-mode)
+  - [8. CI gate with --fail-under](#8-ci-gate-with---fail-under)
+  - [9. Result caching](#9-result-caching)
+  - [10. Verbose metadata](#10-verbose-metadata)
+- [Full CLI Reference](#full-cli-reference)
 - [Programmatic API](#programmatic-api)
 - [CI/CD Integration](#cicd-integration)
 - [HTML Reports](#html-reports)
-- [Configuration File](#configuration-file)
 - [Contributing](#contributing)
 
 ---
 
-## Features
+## The Problem
 
-- **Word-level diff** — coloured insert / delete / equal spans rendered in the terminal
-- **Semantic similarity** — whole-text cosine similarity via `sentence-transformers`
-- **Paragraph scoring** — per-paragraph similarity table (ideal for long documents)
-- **Batch mode** — run a YAML file of prompts across two models; get a combined HTML report
-- **`--fail-under`** — fail CI if similarity drops below a threshold
-- **Programmatic API** — use as a library with no Click dependency
-- **Self-contained HTML reports** — single file, no CDN dependencies, offline-ready
-- **Multi-provider** — OpenAI, Groq, Ollama, LM Studio, any OpenAI-compatible endpoint
+LLMs do not produce deterministic output. When you are evaluating models,
+iterating on prompts, or trying to understand how a model upgrade affects your
+application, you are left doing this manually:
+
+- Copy response A into one text editor
+- Copy response B into another
+- Scroll through them side-by-side trying to spot differences
+- Guess whether the meaning actually changed or just the phrasing
+- Repeat for every prompt, every model pair, every iteration
+
+This is time-consuming, error-prone, and does not scale. If you have 20 prompts
+and just swapped `gpt-4o` for `gpt-4o-mini`, you are looking at an hour of
+tedious comparison with no way to record results or enforce a quality bar.
+
+Teams hit this wall repeatedly:
+
+- **Model evaluation** — "Is `claude-3-5-sonnet` actually better than `gpt-4o`
+  for our use case?"
+- **Prompt engineering** — "Did changing the system prompt improve consistency,
+  or just rearrange words?"
+- **Regression testing** — "Our model provider pushed an update. Did anything
+  break?"
+- **A/B testing** — "We are running two prompt variants in production. How
+  different are they really?"
+
+There was no tool built for this job.
+
+---
+
+## How llm-diff Solves It
+
+`llm-diff` is a CLI tool and Python library that automates LLM output
+comparison from end to end.
+
+You run one command. `llm-diff`:
+
+1. **Calls both models in parallel** via their APIs (OpenAI, Groq, Ollama,
+   LM Studio, or any OpenAI-compatible endpoint)
+2. **Diffs the responses word-by-word** — every insertion, deletion, and
+   unchanged span is tagged and highlighted
+3. **Scores them semantically** using sentence embeddings so you know if the
+   *meaning* diverged even when the words look different
+4. **Renders the result** as a coloured terminal diff or exports a
+   self-contained HTML report
+5. **Scales to batch workloads** — run a YAML file of prompts across two
+   models concurrently and get a combined summary report
+6. **Caches responses** so iterating on thresholds or report settings does not
+   burn API credits
+7. **Gates CI pipelines** via `--fail-under` — fail the build if similarity
+   drops below a threshold
+
+---
+
+## What You Get
+
+| Benefit | Detail |
+|---|---|
+| **Instant visual diff** | Word-level colour highlighting in the terminal — no copy-paste, no manual comparison |
+| **Objective similarity score** | A 0-100% number you can track over time, compare across models, and enforce in CI |
+| **Semantic awareness** | Detects when two responses mean the same thing despite different words |
+| **Shareable reports** | Single self-contained HTML file, no CDN, works offline |
+| **Batch evaluation** | Score all your prompts in one run with a summary table |
+| **Zero wasted API calls** | Response cache means re-running after tweaking settings costs nothing |
+| **CI integration** | `--fail-under 0.85` turns a model upgrade into a pass/fail regression gate |
+| **Vendor agnostic** | OpenAI, Groq, Mistral, DeepSeek, Ollama, LM Studio — any OpenAI-compatible API |
+| **Scriptable** | Full Python library API with no shell dependency |
 
 ---
 
 ## Installation
 
-### Core (word-diff only)
+### Core (word-diff + HTML reports)
 
 ```bash
 pip install llm-diff
@@ -59,152 +122,76 @@ pip install llm-diff
 pip install "llm-diff[semantic]"
 ```
 
-The `[semantic]` extra adds `sentence-transformers` (~400 MB first run for the
-default `all-MiniLM-L6-v2` model).
+The `[semantic]` extra installs `sentence-transformers`. The default model
+(`all-MiniLM-L6-v2`, ~80 MB) downloads on first use.
 
-### Development / editable install
+### Development install
 
 ```bash
 git clone https://github.com/user/llm-diff.git
 cd llm-diff
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[semantic,dev]"
 ```
 
 ---
 
-## Quick Start
+## Configuration
 
-**Step 1 — set your API key**
+`llm-diff` needs API keys. Provide them as environment variables or in a
+`.llmdiff` TOML config file.
+
+### Option A — environment variables
 
 ```bash
 export OPENAI_API_KEY="sk-..."
+export GROQ_API_KEY="gsk_..."
+export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-**Step 2 — run your first diff**
+Windows (PowerShell):
 
-```bash
-llm-diff "Explain recursion in one sentence." -a gpt-4o -b gpt-3.5-turbo
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
 ```
 
-You'll see a coloured word-diff in your terminal alongside a similarity score.
-That's it — under 60 seconds from `pip install` to first diff.
+### Option B — `.llmdiff` config file
 
----
-
-## CLI Reference
-
-```
-Usage: llm-diff [OPTIONS] [PROMPT]
-
-  Compare two LLM responses — semantically, visually, and at scale.
-
-Options:
-  PROMPT               Prompt text sent to both models.
-
-  -a, --model-a MODEL  Model for side A  (e.g. gpt-4o).
-  -b, --model-b MODEL  Model for side B  (e.g. claude-3-5-sonnet).
-  -m, --model   MODEL  Same model for both sides (prompt-diff mode).
-
-  --prompt-a PATH      Path to a text file used as prompt for model A.
-  --prompt-b PATH      Path to a text file used as prompt for model B.
-
-  --batch PATH         Path to a prompts.yml file for batch comparison.
-
-  -s, --semantic       Compute embedding-based cosine similarity score.
-  -p, --paragraph      Per-paragraph similarity (implies --semantic).
-  -j, --json           Output raw JSON to stdout.
-
-  -o, --out PATH       Save HTML report to this path.
-  --save               Auto-save HTML report to ./diffs/.
-
-  -t, --temperature FLOAT   Temperature for both models  (default 0.7).
-  --max-tokens INT          Max tokens per response      (default 1024).
-  --timeout SECS            Request timeout in seconds   (default 30).
-
-  --fail-under FLOAT   Exit 1 if primary score < threshold (CI gate).
-
-  --no-color           Disable terminal colour output.
-  -v, --verbose        Show full API metadata per request.
-
-  --version            Show version and exit.
-  -h, --help           Show this message and exit.
-```
-
-### Examples
-
-```bash
-# Two models, same prompt
-llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo
-
-# Same model, two different prompt variants (prompt-diff)
-llm-diff --prompt-a v1.txt --prompt-b v2.txt --model gpt-4o
-
-# With semantic scoring
-llm-diff "Summarise this article." -a gpt-4o -b claude-3-5-sonnet --semantic
-
-# Per-paragraph scoring
-llm-diff "Write a product description." -a gpt-4o -b gpt-4-turbo --paragraph
-
-# Save HTML report
-llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo --out report.html
-
-# JSON output (pipe to jq)
-llm-diff "Hello." -a gpt-4o -b gpt-3.5-turbo --json | jq '.word_similarity'
-
-# Batch mode
-llm-diff --batch examples/prompts.yml -a gpt-4o -b gpt-3.5-turbo --out batch.html
-
-# CI gate — fail if similarity drops below 80 %
-llm-diff "Critical prompt." -a gpt-4o -b gpt-3.5-turbo --semantic --fail-under 0.8
-```
-
----
-
-## Provider Configuration
-
-`llm-diff` uses the `openai` Python SDK with optional `base_url` overrides,
-so it works with any OpenAI-compatible endpoint.
-
-### Auto-detection
-
-| Model prefix | Provider detected | Key env var |
-|---|---|---|
-| `gpt-*`, `o1-*`, `o3-*` | OpenAI | `OPENAI_API_KEY` |
-| `llama*`, `mixtral*`, `gemma*` | Groq | `GROQ_API_KEY` |
-| `mistral*`, `codestral*` | Mistral AI | `MISTRAL_API_KEY` |
-| `deepseek*` | DeepSeek | `DEEPSEEK_API_KEY` |
-| `claude*`, `anthropic*` | via LiteLLM proxy | `ANTHROPIC_API_KEY` |
-| anything else | Custom (`base_url` required) | — |
-
-### `.llmdiff` config file
-
-Create `.llmdiff` in your project root (or `~/.llmdiff` for global defaults):
+Create `.llmdiff` in your project root or `~/.llmdiff` for global defaults:
 
 ```toml
 [providers.openai]
-api_key = "sk-..."          # or use OPENAI_API_KEY env var
+api_key = "sk-..."          # overrides OPENAI_API_KEY env var
+
+[providers.groq]
+api_key = "gsk_..."         # overrides GROQ_API_KEY env var
 
 [defaults]
 temperature = 0.7
 max_tokens  = 1024
 timeout     = 30
+save        = false         # auto-save every report to ./diffs/
+no_color    = false
 ```
 
-#### Anthropic (via LiteLLM proxy)
+All keys are optional. The file is looked up in the current directory first,
+then `~/.llmdiff`, then environment variables as the final fallback.
 
-```bash
-pip install litellm
-litellm --model anthropic/claude-3-5-sonnet-20241022 --port 4000
-```
+### Provider auto-detection
 
-```toml
-[providers.custom]
-api_key  = "sk-ant-..."
-base_url = "http://localhost:4000/v1"
-```
+`llm-diff` detects the provider from the model name — no extra flags needed:
 
-#### Ollama (local)
+| Model prefix | Provider | Key env var |
+|---|---|---|
+| `gpt-*`, `o1-*`, `o3-*` | OpenAI | `OPENAI_API_KEY` |
+| `llama*`, `mixtral*`, `gemma*` | Groq | `GROQ_API_KEY` |
+| `mistral*`, `codestral*` | Mistral AI | `MISTRAL_API_KEY` |
+| `deepseek*` | DeepSeek | `DEEPSEEK_API_KEY` |
+| `claude*` | via LiteLLM proxy | `ANTHROPIC_API_KEY` |
+| anything else | Custom (`base_url` required) | — |
+
+### Local models (Ollama / LM Studio)
 
 ```bash
 ollama pull llama3.2
@@ -217,67 +204,414 @@ api_key  = "ollama"
 base_url = "http://localhost:11434/v1"
 ```
 
-```bash
-llm-diff "Explain recursion." -a llama3.2 -b mistral
-```
+### Anthropic (via LiteLLM proxy)
 
-#### Groq
+```bash
+pip install litellm
+litellm --model anthropic/claude-3-5-sonnet-20241022 --port 4000
+```
 
 ```toml
-[providers.groq]
-api_key = "gsk_..."         # or set GROQ_API_KEY env var
+[providers.custom]
+api_key  = "sk-ant-..."
+base_url = "http://localhost:4000/v1"
 ```
-
-```bash
-llm-diff "Explain recursion." -a llama-3.3-70b-versatile -b mixtral-8x7b-32768
-```
-
-See [docs/providers.md](docs/providers.md) for the full provider guide.
 
 ---
 
-## Batch Mode
+## Usage
 
-Run a list of prompts against two models in one command and get a combined
-HTML report.
+All examples below assume `OPENAI_API_KEY` is set.
 
-### `prompts.yml` format
+---
+
+### 1. Compare two models on the same prompt
+
+```bash
+llm-diff "Explain recursion in one sentence." -a gpt-4o -b gpt-3.5-turbo
+```
+
+Output:
+
+```
+Model A (gpt-4o):
+  Recursion is a technique where a function calls itself with a simpler
+  version of the problem until a base case is reached.
+
+Model B (gpt-3.5-turbo):
+  Recursion is when a function calls itself repeatedly until a base
+  condition is met, solving the problem step by step.
+
+Word diff:
+  Recursion is [-a technique where a-] {+when a+} function calls itself
+  [-with a simpler version of the problem until a base case is reached.-]
+  {+repeatedly until a base condition is met, solving the problem step by step.+}
+
+  Word similarity:  61.3%
+  Model A tokens:   28    latency: 0.84s
+  Model B tokens:   24    latency: 0.61s
+```
+
+`[-deleted-]` spans are text removed from A. `{+inserted+}` spans are text
+added in B. In the terminal these render as red and green respectively.
+
+---
+
+### 2. Add semantic similarity scoring
+
+```bash
+llm-diff "Explain recursion in one sentence." \
+  -a gpt-4o -b gpt-3.5-turbo --semantic
+```
+
+Output:
+
+```
+  Word similarity:     61.3%
+  Semantic similarity: 92.7%   <- same meaning, different words
+  Primary score:       92.7%
+```
+
+A semantic score above ~85% generally means the responses are equivalent in
+meaning even if the wording differs. Requires `pip install "llm-diff[semantic]"`.
+
+---
+
+### 3. Per-paragraph scoring
+
+```bash
+llm-diff "Write a 3-paragraph summary of transformer architecture." \
+  -a gpt-4o -b gpt-4o-mini --paragraph
+```
+
+Output:
+
+```
+  Word similarity:     54.1%
+  Semantic similarity: 88.6%
+
+  Paragraph similarities:
+    #1  Transformers rely on self-attention to...    94.2%
+    #2  The encoder processes input tokens in...     81.3%
+    #3  Training uses masked language modelling...   79.8%
+```
+
+Use `--paragraph` when responses are long enough that a single score does not
+tell the whole story.
+
+---
+
+### 4. Prompt-diff mode
+
+Compare how two different prompts affect the same model:
+
+```bash
+llm-diff --model gpt-4o \
+  --prompt-a "Explain recursion concisely." \
+  --prompt-b "Explain recursion with a real-world analogy." \
+  --semantic
+```
+
+Or using files:
+
+```bash
+llm-diff --model gpt-4o --prompt-a v1.txt --prompt-b v2.txt --semantic
+```
+
+Output:
+
+```
+  Comparing prompts on gpt-4o
+  Prompt A: Explain recursion concisely.
+  Prompt B: Explain recursion with a real-world analogy.
+
+  Word similarity:     38.4%
+  Semantic similarity: 74.1%
+```
+
+This is the primary workflow for prompt engineering — see whether your rewrites
+actually change the output and by how much.
+
+---
+
+### 5. Save an HTML report
+
+```bash
+llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo \
+  --semantic --out report.html
+```
+
+Output:
+
+```
+  Word similarity:     61.3%
+  Semantic similarity: 92.7%
+  Report saved -> report.html
+```
+
+Open `report.html` in any browser. The file is fully self-contained — no
+server, no internet, no CDN dependencies.
+
+To auto-save every run to `./diffs/` without specifying `--out` each time:
+
+```bash
+llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo --save
+```
+
+Or set `save = true` in your `.llmdiff` config.
+
+---
+
+### 6. JSON output
+
+```bash
+llm-diff "Hello." -a gpt-4o -b gpt-3.5-turbo --json
+```
+
+Output:
+
+```json
+{
+  "prompt_a": "Hello.",
+  "prompt_b": "Hello.",
+  "model_a": "gpt-4o",
+  "model_b": "gpt-3.5-turbo",
+  "response_a": "Hello! How can I assist you today?",
+  "response_b": "Hello! How can I help you?",
+  "diff": [
+    {"type": "equal",  "text": "Hello! How can I "},
+    {"type": "delete", "text": "assist you today"},
+    {"type": "insert", "text": "help you"},
+    {"type": "equal",  "text": "?"}
+  ],
+  "word_similarity": 0.714,
+  "semantic_score": null,
+  "tokens_a": {"prompt": 2, "completion": 9, "total": 11},
+  "tokens_b": {"prompt": 2, "completion": 7, "total": 9},
+  "latency_a_ms": 812,
+  "latency_b_ms": 594
+}
+```
+
+Extract a single field with `jq`:
+
+```bash
+llm-diff "Hello." -a gpt-4o -b gpt-3.5-turbo --json | jq '.word_similarity'
+# 0.714
+```
+
+---
+
+### 7. Batch mode
+
+Evaluate a set of prompts across two models in one command.
+
+Create `prompts.yml`:
 
 ```yaml
 prompts:
   - id: explain-recursion
     text: "Explain recursion in one sentence."
 
-  - id: summarise
-    text: "Summarise the following article: {input}"
-    inputs:
-      - article1.txt
-      - article2.txt
-
   - id: code-review
     text: "Review this Python function for readability: {input}"
     inputs:
-      - func.py
+      - examples/func.py
+
+  - id: summarise
+    text: "Summarise the following: {input}"
+    inputs:
+      - examples/article1.txt
+      - examples/article2.txt
 ```
 
-- **`id`** — unique identifier (shown in the report header)
-- **`text`** — prompt template; use `{input}` as a placeholder
-- **`inputs`** — list of file paths (relative to the YAML file); one batch
-  item is generated per file
+- `id` — label shown in the terminal and HTML report
+- `text` — prompt template; use `{input}` as a file placeholder
+- `inputs` — list of files relative to the YAML; one batch item per file
 
-### Running a batch
+Run the batch:
 
 ```bash
-llm-diff --batch prompts.yml -a gpt-4o -b gpt-3.5-turbo --out report.html
+llm-diff --batch prompts.yml -a gpt-4o -b gpt-3.5-turbo \
+  --semantic --out batch_report.html
+```
+
+Output:
+
+```
+  Fetching responses for 4 prompt(s) (concurrency=4)...
+
+  explain-recursion          word: 61.3%   semantic: 92.7%
+  code-review/func.py        word: 74.8%   semantic: 89.2%
+  summarise/article1.txt     word: 48.3%   semantic: 83.1%
+  summarise/article2.txt     word: 51.0%   semantic: 85.5%
+
+  Average word similarity:      58.9%
+  Average semantic similarity:  87.6%
+  Report saved -> batch_report.html
+```
+
+By default up to 4 API calls run in parallel. Override with `--concurrency`:
+
+```bash
+llm-diff --batch prompts.yml -a gpt-4o -b gpt-3.5-turbo \
+  --concurrency 8 --out batch_report.html
 ```
 
 A working example is in [`examples/prompts.yml`](examples/prompts.yml).
 
 ---
 
+### 8. CI gate with `--fail-under`
+
+Fail the command if similarity drops below a threshold:
+
+```bash
+llm-diff "Summarise the changelog." \
+  -a gpt-4o -b gpt-4o-mini \
+  --semantic --fail-under 0.85
+```
+
+Passes (exit code 0):
+
+```
+  Semantic similarity: 91.3%   threshold: 85.0%   PASS
+```
+
+Fails (exit code 1):
+
+```
+  Semantic similarity: 72.4%   threshold: 85.0%   FAIL
+Error: similarity 0.724 < threshold 0.850
+```
+
+In batch mode, exit 1 is triggered if any single prompt drops below the
+threshold:
+
+```bash
+llm-diff --batch prompts.yml -a gpt-4o -b gpt-4o-mini \
+  --semantic --fail-under 0.80
+```
+
+Output:
+
+```
+  explain-recursion        87.2%   PASS
+  code-review/func.py      74.1%   FAIL  <- below 80%
+  summarise/article1.txt   83.6%   PASS
+
+Error: 1 prompt(s) failed the similarity threshold (0.80)
+```
+
+---
+
+### 9. Result caching
+
+By default `llm-diff` caches responses to `~/.cache/llm-diff/` keyed on
+`(model, prompt, temperature, max_tokens)`. Re-running the same diff is
+instant and free:
+
+```bash
+# First run — calls the API
+llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo --semantic
+# latency: 0.84s / 0.61s
+
+# Second run — served from cache
+llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo --semantic
+# latency: 0.00s / 0.00s  (cached)
+```
+
+Caching is most useful when iterating on thresholds, scoring options, or
+report formatting without re-paying for the same API calls.
+
+To bypass the cache and always call the API:
+
+```bash
+llm-diff "Explain recursion." -a gpt-4o -b gpt-3.5-turbo --no-cache
+```
+
+---
+
+### 10. Verbose metadata
+
+```bash
+llm-diff "Hello." -a gpt-4o -b gpt-3.5-turbo --verbose
+```
+
+Output:
+
+```
+  [gpt-4o]
+    provider:          openai
+    prompt_tokens:     2
+    completion_tokens: 9
+    total_tokens:      11
+    latency:           812ms
+
+  [gpt-3.5-turbo]
+    provider:          openai
+    prompt_tokens:     2
+    completion_tokens: 7
+    total_tokens:      9
+    latency:           594ms
+```
+
+---
+
+## Full CLI Reference
+
+```
+Usage: llm-diff [OPTIONS] [PROMPT]
+
+  Compare two LLM responses — semantically, visually, and at scale.
+
+Arguments:
+  PROMPT               Prompt text sent to both models.
+
+Model selection:
+  -a, --model-a MODEL  Model for side A  (e.g. gpt-4o).
+  -b, --model-b MODEL  Model for side B  (e.g. gpt-4o-mini).
+  -m, --model   MODEL  Same model for both sides (prompt-diff mode).
+
+Prompt sources:
+  --prompt-a PATH      Path to a text file used as prompt for model A.
+  --prompt-b PATH      Path to a text file used as prompt for model B.
+  --batch    PATH      Path to a prompts.yml file for batch comparison.
+
+Scoring:
+  -s, --semantic       Compute embedding-based cosine similarity score.
+  -p, --paragraph      Per-paragraph similarity (implies --semantic).
+
+Output:
+  -j, --json           Output raw JSON to stdout.
+  -o, --out PATH       Save HTML report to this path.
+  --save               Auto-save HTML report to ./diffs/.
+
+API settings:
+  -t, --temperature FLOAT   Temperature for both models  (default 0.7).
+  --max-tokens INT          Max tokens per response      (default 1024).
+  --timeout SECS            Request timeout in seconds   (default 30).
+
+Quality gate:
+  --fail-under FLOAT   Exit 1 if primary score < threshold.
+
+Performance:
+  --concurrency INT    Max parallel API calls in batch mode (default 4).
+  --no-cache           Skip cache; always call the API.
+
+Display:
+  --no-color           Disable terminal colour output.
+  -v, --verbose        Show full API metadata per request.
+
+  --version            Show version and exit.
+  -h, --help           Show this message and exit.
+```
+
+---
+
 ## Programmatic API
 
-Use `llm-diff` as a library without any CLI dependency:
+Use `llm-diff` as a Python library:
 
 ```python
 import asyncio
@@ -287,8 +621,8 @@ report = asyncio.run(
     compare("Explain recursion.", model_a="gpt-4o", model_b="gpt-3.5-turbo")
 )
 
-print(f"Word similarity:    {report.word_similarity:.2%}")
-print(f"Response A tokens:  {report.comparison.response_a.total_tokens}")
+print(f"Word similarity:   {report.word_similarity:.2%}")
+print(f"Response A tokens: {report.comparison.response_a.total_tokens}")
 ```
 
 ### With semantic scoring
@@ -339,7 +673,7 @@ for r in reports:
     print(f"{r.comparison.response_a.model}: {r.word_similarity:.2%}")
 ```
 
-### `ComparisonReport` fields
+### ComparisonReport fields
 
 | Field | Type | Description |
 |---|---|---|
@@ -347,9 +681,9 @@ for r in reports:
 | `prompt_b` | `str` | Prompt sent to model B |
 | `comparison` | `ComparisonResult` | Raw paired model responses |
 | `diff_result` | `DiffResult` | Word-level diff chunks + similarity |
-| `semantic_score` | `float \| None` | Whole-text cosine similarity |
-| `paragraph_scores` | `list \| None` | Per-paragraph similarity scores |
-| `html_report` | `str \| None` | Self-contained HTML (when `build_html=True`) |
+| `semantic_score` | `float or None` | Whole-text cosine similarity (0-1) |
+| `paragraph_scores` | `list or None` | Per-paragraph similarity scores |
+| `html_report` | `str or None` | Self-contained HTML (when `build_html=True`) |
 | `word_similarity` | `float` | Property — `diff_result.similarity` |
 | `primary_score` | `float` | Property — semantic if set, else word |
 
@@ -357,78 +691,58 @@ for r in reports:
 
 ## CI/CD Integration
 
-Use `--fail-under` to gate deployments on response consistency:
-
 ```yaml
 # .github/workflows/llm-check.yml
-- name: Check model consistency
-  run: |
-    llm-diff "Summarise the changelog." \
-      -a gpt-4o -b gpt-4o-mini \
-      --semantic --fail-under 0.85
-  env:
-    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+name: LLM regression check
+
+on: [push, pull_request]
+
+jobs:
+  llm-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install llm-diff
+        run: pip install "llm-diff[semantic]"
+
+      - name: Run similarity check
+        run: |
+          llm-diff --batch prompts.yml \
+            -a gpt-4o -b gpt-4o-mini \
+            --semantic --fail-under 0.85 \
+            --out diff_report.html
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diff-report
+          path: diff_report.html
 ```
 
-- Uses **semantic score** when `--semantic` or `--paragraph` is set
-- Uses **word similarity** otherwise
-- Exit code `1` triggers the CI failure; exit code `0` means all clear
-
-Batch variant — fail if *any* prompt drops below the threshold:
-
-```bash
-llm-diff --batch prompts.yml -a gpt-4o -b gpt-4o-mini \
-  --semantic --fail-under 0.80
-```
+This makes model upgrades and prompt changes reviewable, auditable, and
+enforceable — the same discipline applied to code, now applied to LLM output.
 
 ---
 
 ## HTML Reports
 
-Pass `--out report.html` (single diff) or `--out batch.html` (batch) to
-generate a fully self-contained HTML file.  No CDN dependencies — works
-offline or in air-gapped environments.
+Pass `--out report.html` to generate a fully self-contained HTML report.
+No CDN dependencies — works offline in air-gapped environments.
 
 Single-diff reports include:
-
 - Side-by-side responses with coloured word-diff
-- Word similarity score + optional semantic score
+- Word similarity score and optional semantic score
 - Optional per-paragraph similarity table
 - Token usage and latency metadata
 
 Batch reports add:
-
-- Summary table (all prompts, scores, pass/fail highlighting)
+- Summary table with all prompts, scores, and pass/fail highlighting
 - Per-item expandable diff cards
 - Average similarity across the batch
-
----
-
-## Configuration File
-
-`llm-diff` looks for a `.llmdiff` TOML file in the current directory, then
-`~/.llmdiff` (user home), then falls back to environment variables.
-
-```toml
-[providers.openai]
-api_key   = "sk-..."          # overrides OPENAI_API_KEY
-
-[providers.groq]
-api_key   = "gsk_..."         # overrides GROQ_API_KEY
-
-[providers.custom]
-api_key   = "local"
-base_url  = "http://localhost:11434/v1"   # Ollama / LM Studio
-
-[defaults]
-temperature = 0.7
-max_tokens  = 1024
-timeout     = 30
-save        = false           # auto-save every report to ./diffs/
-no_color    = false
-```
-
-All keys are optional; omit any section you don't need.
 
 ---
 

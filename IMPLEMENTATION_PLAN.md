@@ -402,7 +402,7 @@ llm-diff/
 
 #### Must-Complete Tasks
 
-- [ ] **Version bump to `1.0.0`**
+- [x] **Version bump to `1.0.0`**
   - Update `llm_diff/__init__.py` and `pyproject.toml`
   - Final `CHANGELOG.md` entry for v1.0
 
@@ -417,7 +417,7 @@ llm-diff/
 
 #### Nice-to-Have Features
 
-- [ ] **Batch concurrency**
+- [x] **Batch concurrency**
   - Currently batch items run sequentially — add `asyncio.gather` for parallel API calls across batch items
   - Add `--concurrency <n>` flag to limit parallel requests (default: 4)
   - Significant speedup for large batch files (10+ prompts)
@@ -427,13 +427,13 @@ llm-diff/
   - Show a Rich progress bar during download instead of raw pip/torch output
   - Improves first-run UX significantly
 
-- [ ] **Result caching**
+- [x] **Result caching**
   - Cache LLM responses by (model, prompt, temperature, max_tokens) hash
   - Store in `~/.cache/llm-diff/` or configurable path
   - Add `--no-cache` flag to bypass
   - Useful for iterating on report formatting without re-calling APIs
 
-- [ ] **Cold-start performance benchmark**
+- [x] **Cold-start performance benchmark**
   - Add benchmark script measuring CLI cold-start latency (no API call)
   - Target: < 200ms (per spec)
   - Track in CI to prevent regression
@@ -452,7 +452,7 @@ llm-diff/
 
 #### Launch Prep
 
-- [ ] **GitHub repository polish**
+- [x] **GitHub repository polish**
   - Topics, description, social preview image
   - Issue templates, PR template
   - Branch protection rules on `main`
@@ -647,6 +647,6 @@ Measured at v1.0 launch and 30 days post-launch:
 | 8 | v0.6 Enterprise | `--fail-under`, programmatic API, `--paragraph` in batch | ✅ Complete |
 | 9 | v0.7 Docs | LICENSE, README, CHANGELOG, CONTRIBUTING, PyPI metadata | ✅ Complete |
 | 10 | v0.8 Testing | Integration tests, GitHub Actions CI, edge-case hardening | ✅ Complete |
-| 11–12 | v1.0 Stable | Nice-to-haves, final QA, PyPI publish, launch | 🔲 Pending |
+| 11–12 | v1.0 Stable | Nice-to-haves, final QA, PyPI publish, launch | ✅ Complete |
 
 **Total: ~12 weeks to v1.0**
