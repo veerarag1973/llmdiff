@@ -343,3 +343,133 @@ def _validate_provider(
         )
 
     return provider_name, provider_cfg
+
+
+# ---------------------------------------------------------------------------
+# Messages-based call (for system-prompt use-cases like LLM-as-a-Judge)
+# ---------------------------------------------------------------------------
+
+
+async def _call_model_with_messages(
+    *,
+    model: str,
+    messages: list[dict],
+    provider_cfg: ProviderConfig,
+    provider_name: str,
+    temperature: float,
+    max_tokens: int,
+    timeout: int,
+) -> str:
+    """Send a chat-completion with an explicit messages list and return the text.
+
+    Unlike :func:`_call_model`, this accepts a full ``messages`` list so that
+    a system prompt can be included (required for LLM-as-a-Judge).
+
+    Parameters
+    ----------
+    messages:
+        A list of ``{"role": ..., "content": ...}`` dicts.
+    """
+    last_exc: Exception | None = None
+
+    for attempt in range(_MAX_RETRIES):
+        client = _make_client(provider_cfg)
+        try:
+            start = time.monotonic()
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=model,
+                    messages=messages,  # type: ignore[arg-type]
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                ),
+                timeout=float(timeout),
+            )
+            elapsed_ms = (time.monotonic() - start) * 1_000  # noqa: F841
+
+            if not response.choices:
+                raise RuntimeError(
+                    f"Model '{model}' returned an empty choices list."
+                )
+            choice = response.choices[0]
+            if choice.message.content is None:
+                raise RuntimeError(
+                    f"Model '{model}' returned null message content."
+                )
+            return (choice.message.content or "").strip()
+
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"Request to model '{model}' timed out after {timeout}s."
+            ) from exc
+
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if not _should_retry(exc):
+                raise
+
+            delay = min(_RETRY_BASE_DELAY * (_RETRY_EXP_BASE**attempt), _RETRY_MAX_DELAY)
+            logger.warning(
+                "Retryable error for model '%s' (attempt %d/%d): %s — retrying in %.1fs",
+                model,
+                attempt + 1,
+                _MAX_RETRIES,
+                type(exc).__name__,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+        finally:
+            await client.close()
+
+    raise RuntimeError(
+        f"All {_MAX_RETRIES} attempts failed for model '{model}'."
+    ) from last_exc
+
+
+async def call_model_with_messages(
+    *,
+    model: str,
+    messages: list[dict],
+    config: LLMDiffConfig,
+    temperature: float | None = None,
+    max_tokens: int = 512,
+    timeout: int | None = None,
+) -> str:
+    """Public wrapper — call *model* with an explicit *messages* list.
+
+    This is the entry point for the LLM-as-a-Judge feature.  It resolves the
+    provider credentials from *config*, then delegates to
+    :func:`_call_model_with_messages`.
+
+    Parameters
+    ----------
+    model:
+        Model identifier (e.g. ``"gpt-4o"``).
+    messages:
+        Full list of ``{"role": ..., "content": ...}`` dicts (system + user).
+    config:
+        :class:`~llm_diff.config.LLMDiffConfig` for API credentials.
+    temperature:
+        Override; defaults to ``0.0`` for deterministic judge output.
+    max_tokens:
+        Max tokens for the judge's response.
+    timeout:
+        Override request timeout; uses *config.timeout* when ``None``.
+
+    Returns
+    -------
+    str
+        The raw text content from the model.
+    """
+    provider_name, provider_cfg = _validate_provider(config, model)
+    return await _call_model_with_messages(
+        model=model,
+        messages=messages,
+        provider_cfg=provider_cfg,
+        provider_name=provider_name,
+        temperature=temperature if temperature is not None else 0.0,
+        max_tokens=max_tokens,
+        timeout=timeout if timeout is not None else config.timeout,
+    )
+

@@ -115,6 +115,9 @@ class TestComparisonReport:
             "bleu_score",
             "rouge_l_score",
             "html_report",
+            "judge_result",
+            "cost_a",
+            "cost_b",
         }
 
     def test_prompt_a_and_b_stored(self) -> None:

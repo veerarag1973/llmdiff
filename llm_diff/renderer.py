@@ -86,6 +86,9 @@ def render_diff(
     paragraph_scores: list[ParagraphScore] | None = None,
     bleu_score: float | None = None,
     rouge_l_score: float | None = None,
+    judge_result: object = None,
+    cost_a: object = None,
+    cost_b: object = None,
 ) -> None:
     """Write the full diff output to *console*.
 
@@ -176,6 +179,51 @@ def render_diff(
     footer.append(" / ", style="dim")
     footer.append(f"{rb.latency_ms:.0f}ms", style="bold white")
     console.print(footer)
+
+    # ── Judge result ─────────────────────────────────────────────────────────
+    if judge_result is not None:
+        winner = getattr(judge_result, "winner", None)
+        reasoning = getattr(judge_result, "reasoning", "")
+        score_a = getattr(judge_result, "score_a", None)
+        score_b = getattr(judge_result, "score_b", None)
+        judge_model = getattr(judge_result, "judge_model", "")
+        winner_colour = {
+            "A": "bold yellow",
+            "B": "bold magenta",
+            "tie": "bold cyan",
+        }.get(winner or "tie", "bold white")
+        judge_text = Text()
+        judge_text.append("  Judge", style="bold dim")
+        judge_text.append(f" [{judge_model}]", style="dim")
+        judge_text.append(": ", style="dim")
+        judge_text.append(f"Winner = {winner}", style=winner_colour)
+        if score_a is not None and score_b is not None:
+            judge_text.append(
+                f"  (A: {score_a:.1f}  B: {score_b:.1f})", style="dim"
+            )
+        console.print(judge_text)
+        if reasoning:
+            console.print(Text(f"  {reasoning}", style="dim italic"))
+
+    # ── Cost breakdown ───────────────────────────────────────────────────────
+    if cost_a is not None and cost_b is not None:
+        cost_text = Text()
+        cost_text.append("  Cost: ", style="dim")
+        cost_text.append(
+            f"[A] ${getattr(cost_a, 'total_usd', 0.0):.6f}",
+            style="bold yellow",
+        )
+        cost_text.append("  /  ", style="dim")
+        cost_text.append(
+            f"[B] ${getattr(cost_b, 'total_usd', 0.0):.6f}",
+            style="bold magenta",
+        )
+        known_a = getattr(cost_a, "known_model", False)
+        known_b = getattr(cost_b, "known_model", False)
+        if not known_a or not known_b:
+            cost_text.append("  (estimated — model not in pricing table)", style="dim red")
+        console.print(cost_text)
+
     console.print(Rule(style="dim cyan"))
 
     # ── Paragraph similarity table ───────────────────────────────────────────
@@ -204,3 +252,190 @@ def render_diff(
 
         console.print()
         console.print(para_table)
+
+# ---------------------------------------------------------------------------
+# JSON-struct diff renderer
+# ---------------------------------------------------------------------------
+
+
+def render_json_struct_diff(
+    *,
+    prompt: str,
+    result: ComparisonResult,
+    json_struct_result: object,
+    diff_result: DiffResult,
+    console: Console,
+    judge_result: object = None,
+    cost_a: object = None,
+    cost_b: object = None,
+) -> None:
+    """Render a structured JSON key/value diff to *console*."""
+    from llm_diff.diff import JsonChangeType  # noqa: PLC0415
+
+    ra = result.response_a
+    rb = result.response_b
+
+    # Header
+    console.print(Rule(style="dim cyan"))
+    header = Text()
+    header.append("  llm-diff", style=_COLOUR_HEADER)
+    header.append("  •  JSON-struct  ", style="dim")
+    header.append(ra.model, style="bold yellow")
+    header.append("  vs  ", style="dim")
+    header.append(rb.model, style="bold magenta")
+    console.print(header)
+    prompt_display = prompt if len(prompt) <= 80 else prompt[:77] + "..."
+    console.print(Text(f"  Prompt: {prompt_display!r}", style=_COLOUR_META))
+    console.print(Rule(style="dim cyan"))
+
+    # Check validity
+    valid_a = getattr(json_struct_result, "is_valid_json_a", False)
+    valid_b = getattr(json_struct_result, "is_valid_json_b", False)
+
+    if not valid_a or not valid_b:
+        # Fall back to word diff when one/both are not valid JSON
+        console.print(
+            Text(
+                "  ⚠ One or both responses are not valid JSON — "
+                "falling back to word diff.",
+                style="bold yellow",
+            )
+        )
+        wdr = getattr(json_struct_result, "word_diff_result", diff_result)
+        if wdr is not None:
+            diff_text = _build_diff_text(wdr.chunks)
+            console.print()
+            console.print(diff_text, soft_wrap=True)
+        console.print(Rule(style="dim cyan"))
+        return
+
+    entries = getattr(json_struct_result, "entries", [])
+
+    _CHANGE_COLOUR: dict[object, str] = {
+        JsonChangeType.ADDED: "bold green",
+        JsonChangeType.REMOVED: "bold red",
+        JsonChangeType.CHANGED: "bold yellow",
+        JsonChangeType.TYPE_CHANGE: "bold magenta",
+        JsonChangeType.UNCHANGED: "dim white",
+    }
+
+    tbl = Table(
+        title="JSON key/value diff",
+        show_header=True,
+        header_style="bold cyan",
+        show_lines=True,
+    )
+    tbl.add_column("Key", style="dim white", no_wrap=True)
+    tbl.add_column("Change", justify="center", no_wrap=True)
+    tbl.add_column(f"[yellow]{ra.model}[/yellow] (A)")
+    tbl.add_column(f"[magenta]{rb.model}[/magenta] (B)")
+
+    for entry in entries:
+        ct = entry.change_type
+        col = _CHANGE_COLOUR.get(ct, "white")
+        label = ct.value.upper() if hasattr(ct, "value") else str(ct)
+        va = "" if entry.value_a is None else str(entry.value_a)
+        vb = "" if entry.value_b is None else str(entry.value_b)
+        tbl.add_row(
+            entry.path,
+            Text(label, style=col),
+            Text(va[:80], style="bold yellow" if va else "dim"),
+            Text(vb[:80], style="bold magenta" if vb else "dim"),
+        )
+
+    console.print(tbl)
+
+    # Summary
+    summary = Text()
+    summary.append("  ", style="")
+    added = getattr(json_struct_result, "added", [])
+    removed = getattr(json_struct_result, "removed", [])
+    changed = getattr(json_struct_result, "changed", [])
+    unchanged = getattr(json_struct_result, "unchanged", [])
+    summary.append(f"+{len(added)} ", style="bold green")
+    summary.append(f"-{len(removed)} ", style="bold red")
+    summary.append(f"~{len(changed)} ", style="bold yellow")
+    summary.append(f"={len(unchanged)}", style="dim white")
+    console.print(summary)
+
+    # Reuse word-diff similarity for the footer metric
+    score_style = _score_colour(diff_result.similarity)
+    footer = Text()
+    footer.append("  Similarity (word): ", style="dim")
+    footer.append(diff_result.similarity_pct, style=score_style)
+    console.print(footer)
+
+    # Judge / cost
+    if judge_result is not None:
+        winner = getattr(judge_result, "winner", None)
+        judge_model = getattr(judge_result, "judge_model", "")
+        winner_colour = {"A": "bold yellow", "B": "bold magenta", "tie": "bold cyan"}.get(
+            winner or "tie", "bold white"
+        )
+        jt = Text()
+        jt.append(f"  Judge [{judge_model}]: ", style="dim")
+        jt.append(f"Winner = {winner}", style=winner_colour)
+        console.print(jt)
+    if cost_a is not None and cost_b is not None:
+        ct2 = Text()
+        ct2.append("  Cost: ", style="dim")
+        ct2.append(f"[A] ${getattr(cost_a, 'total_usd', 0.0):.6f}", style="bold yellow")
+        ct2.append("  /  ", style="dim")
+        ct2.append(f"[B] ${getattr(cost_b, 'total_usd', 0.0):.6f}", style="bold magenta")
+        console.print(ct2)
+
+    console.print(Rule(style="dim cyan"))
+
+
+# ---------------------------------------------------------------------------
+# Multi-model report renderer
+# ---------------------------------------------------------------------------
+
+
+def render_multi_model_report(*, report: object, console: Console) -> None:
+    """Render a :class:`~llm_diff.multi.MultiModelReport` to *console*."""
+    models: list[str] = getattr(report, "models", [])
+    responses: dict = getattr(report, "responses", {})
+    model_responses: dict = getattr(report, "model_responses", {})
+
+    console.print(Rule(style="dim cyan"))
+    header = Text()
+    header.append("  llm-diff", style=_COLOUR_HEADER)
+    header.append("  •  Multi-model comparison", style="dim")
+    console.print(header)
+
+    prompt = getattr(report, "prompt", "")
+    prompt_display = prompt if len(prompt) <= 80 else prompt[:77] + "..."
+    console.print(Text(f"  Prompt: {prompt_display!r}", style=_COLOUR_META))
+    console.print(Rule(style="dim cyan"))
+
+    # Similarity matrix table
+    ranked = report.ranked_pairs()  # type: ignore[union-attr]
+    tbl = Table(
+        title="Pairwise Similarity (ranked)",
+        show_header=True,
+        header_style="bold cyan",
+        show_lines=True,
+    )
+    tbl.add_column("Model A", style="bold yellow")
+    tbl.add_column("Model B", style="bold magenta")
+    tbl.add_column("Score", justify="right")
+
+    for pair in ranked:
+        sc = pair.primary_score
+        sc_style = _score_colour(sc)
+        tbl.add_row(pair.model_a, pair.model_b, Text(f"{sc:.2%}", style=sc_style))
+
+    console.print(tbl)
+
+    # Per-model responses summary
+    console.print()
+    for m in models:
+        mr = model_responses.get(m)
+        resp_text = responses.get(m, "")
+        tokens_info = f" ({mr.total_tokens} tokens, {mr.latency_ms:.0f}ms)" if mr else ""
+        console.print(Text(f"\n  [{m}]{tokens_info}", style="bold cyan"))
+        excerpt = resp_text[:200] + ("…" if len(resp_text) > 200 else "")
+        console.print(Text("  " + excerpt, style="white"))
+
+    console.print(Rule(style="dim cyan"))

@@ -90,6 +90,9 @@ def build_report(
     bleu_score: float | None = None,
     rouge_l_score: float | None = None,
     generated_at: str | None = None,
+    judge_result: object = None,
+    cost_a: object = None,
+    cost_b: object = None,
 ) -> str:
     """Render the HTML report template and return the HTML string.
 
@@ -177,6 +180,17 @@ def build_report(
         "rouge_l_score_class": (
             _score_class(rouge_l_score) if rouge_l_score is not None else ""
         ),
+        # Judge result
+        "has_judge": judge_result is not None,
+        "judge_winner": getattr(judge_result, "winner", None),
+        "judge_reasoning": getattr(judge_result, "reasoning", ""),
+        "judge_score_a": getattr(judge_result, "score_a", None),
+        "judge_score_b": getattr(judge_result, "score_b", None),
+        "judge_model": getattr(judge_result, "judge_model", ""),
+        # Cost
+        "has_cost": cost_a is not None and cost_b is not None,
+        "cost_a": cost_a.to_dict() if cost_a is not None else None,  # type: ignore[union-attr]
+        "cost_b": cost_b.to_dict() if cost_b is not None else None,  # type: ignore[union-attr]
     }
 
     env = _get_jinja_env()

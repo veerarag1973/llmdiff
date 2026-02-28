@@ -21,7 +21,7 @@ request.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/user/llm-diff.git
+git clone https://github.com/sriramrathinavelu/llm-diff.git
 cd llm-diff
 ```
 

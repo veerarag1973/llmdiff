@@ -11,6 +11,71 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.0] — 2026-02-28
+
+### Added — Tier 1: Evaluation Depth
+
+- **LLM-as-a-Judge** (`--judge MODEL`) — send both responses to a third model
+  for structured winner/score/reasoning evaluation; adds `judge_result` field
+  to `ComparisonReport`.  Implemented in `llm_diff/judge.py` (`JudgeResult`,
+  `run_judge()`).
+- **Cost tracking** (`--show-cost`) — built-in USD pricing table
+  (35+ models across OpenAI, Anthropic, Groq, Mistral, DeepSeek, Google)
+  with prefix-alias fuzzy matching; adds `cost_a` / `cost_b` fields to
+  `ComparisonReport`.  Implemented in `llm_diff/pricing.py` (`CostEstimate`,
+  `estimate_cost()`).
+- **Multi-model comparison** (`--model-c MODEL`, `--model-d MODEL`) — run the
+  same prompt against N models concurrently, compute all pairwise similarity
+  scores and display a ranked matrix.  Implemented in `llm_diff/multi.py`
+  (`MultiModelReport`, `PairScore`, `run_multi_model()`).
+- **Structured JSON diff** (`--mode json-struct`) — when both responses are
+  valid JSON, performs a key-by-key comparison highlighting added / removed /
+  changed / type-changed / unchanged paths instead of a word diff.  Implemented
+  in `llm_diff/diff.py` (`JsonStructDiffResult`, `json_struct_diff()`,
+  `detect_json()`).
+- `call_model_with_messages()` added to `llm_diff/providers.py` — generic
+  async helper that accepts a full messages list (system + user roles) for
+  non-diff model calls such as the judge.
+- HTML report updated with judge winner/scores/reasoning card and cost table
+  (via `llm_diff/templates/report.html.j2`).
+- All new symbols exported from `llm_diff/__init__.py`.
+- 63 new tests in `tests/test_judge.py`, `tests/test_pricing.py`,
+  `tests/test_multi.py`, and `tests/test_json_struct_diff.py`.
+
+---
+
+## [1.1.0] — 2026-02-28
+
+### Added
+- **BLEU score** (`--bleu` flag) — pure-Python BLEU-4 implementation with
+  brevity penalty; zero extra dependencies; runs in < 10 ms on typical
+  LLM responses.  Exposed as `bleu_score` on `ComparisonReport`.
+- **ROUGE-L F1 score** (`--rouge` flag) — space-optimised LCS-based F1;
+  pure Python, zero extra dependencies.  Exposed as `rouge_l_score` on
+  `ComparisonReport`.
+- `llm_diff/metrics.py` — new module implementing `compute_bleu()` and
+  `compute_rouge_l()` with shared lowercase word tokeniser.
+- `tests/test_metrics.py` — 37 tests covering tokeniser, n-gram counter,
+  LCS length, BLEU (including brevity penalty, edge cases), ROUGE-L, and
+  integration scenarios.
+- BLEU / ROUGE-L scores surfaced in terminal footer, JSON output, and
+  both single-diff and batch HTML reports.
+- `BatchResult` dataclass gains `bleu_score` and `rouge_l_score` fields.
+- `compare()`, `compare_prompts()`, and `compare_batch()` accept `bleu` and
+  `rouge` keyword arguments.
+- **Phase roadmap** (Tier 1–3) added to `IMPLEMENTATION_PLAN.md` as
+  Phases 10–12 with detailed task lists.
+- **Community & Feedback** section added to `README.md` with links for bug
+  reports, feature requests, GitHub Discussions, and the roadmap.
+
+### Changed
+- Version bumped to **1.1.0**.
+
+### Fixed
+- Nothing
+
+---
+
 ## [1.0.0] — 2026-03-01
 
 ### Added

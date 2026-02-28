@@ -80,9 +80,9 @@ def _configure_logging(verbose: bool) -> None:
 @click.option(
     "--mode",
     default="word",
-    type=click.Choice(["word", "json"], case_sensitive=False),
+    type=click.Choice(["word", "json", "json-struct"], case_sensitive=False),
     show_default=True,
-    help="Diff mode.",
+    help="Diff mode: 'word' (default), 'json' (JSON stdout output), 'json-struct' (key-level JSON diff).",
 )
 @click.option(
     "--semantic", "-s",
@@ -113,6 +113,26 @@ def _configure_logging(verbose: bool) -> None:
     "--batch",
     metavar="PATH", default=None,
     help="Path to a prompts.yml file for batch comparison.",
+)
+@click.option(
+    "--judge",
+    metavar="MODEL", default=None,
+    help="Model to use as LLM-as-a-Judge (e.g. gpt-4o). Rates both responses and picks a winner.",
+)
+@click.option(
+    "--show-cost",
+    is_flag=True, default=False,
+    help="Estimate and display the USD cost of each model call.",
+)
+@click.option(
+    "--model-c", "model_c",
+    metavar="MODEL", default=None,
+    help="Add a third model to the comparison (multi-model mode).",
+)
+@click.option(
+    "--model-d", "model_d",
+    metavar="MODEL", default=None,
+    help="Add a fourth model to the comparison (multi-model mode, requires --model-c).",
 )
 @click.option(
     "--out", "-o",
@@ -192,6 +212,10 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     fail_under: float | None,
     concurrency: int,
     no_cache: bool,
+    judge: str | None,
+    show_cost: bool,
+    model_c: str | None,
+    model_d: str | None,
 ) -> None:
     """Compare two LLM responses — semantically, visually, and at scale.
 
@@ -202,6 +226,9 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
       llm-diff "Explain recursion" -a gpt-4o -b claude-3-5-sonnet --paragraph
       llm-diff --prompt-a v1.txt --prompt-b v2.txt --model gpt-4o
       llm-diff "Explain recursion" -a gpt-4o -b gpt-3.5-turbo --semantic --fail-under 0.8
+      llm-diff "Explain recursion" -a gpt-4o -b gpt-4o-mini --judge gpt-4o
+      llm-diff "Explain recursion" -a gpt-4o -b gpt-4o-mini --show-cost
+      llm-diff "Explain recursion" -a gpt-4o -b gpt-4o-mini --model-c claude-3-5-sonnet
     """
     _configure_logging(verbose)
     console = Console(no_color=no_color, stderr=False)
@@ -245,11 +272,38 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
                     paragraph=paragraph,
                     bleu=bleu,
                     rouge=rouge,
+                    judge=judge,
+                    show_cost=show_cost,
                     fail_under=fail_under,
                     out=out,
                     config=cfg,
                     console=console,
                     verbose=verbose,
+                    concurrency=concurrency,
+                    cache=_cache,
+                )
+            )
+        elif model_c or model_d:
+            # ── Multi-model comparison ───────────────────────────────────────
+            resolved_ma_mm: str = model or model_a or ""
+            resolved_mb_mm: str = model or model_b or ""
+            if not resolved_ma_mm or not resolved_mb_mm:
+                _die(console, "Multi-model mode requires --model-a / -a and --model-b / -b.")
+            resolved_prompt = prompt or ""
+            if not resolved_prompt:
+                _die(console, "Multi-model mode requires a prompt as a positional argument.")
+            all_models: list[str] = [resolved_ma_mm, resolved_mb_mm]
+            if model_c:
+                all_models.append(model_c)
+            if model_d:
+                all_models.append(model_d)
+            asyncio.run(
+                _run_multi(
+                    prompt=resolved_prompt,
+                    models=all_models,
+                    semantic=semantic,
+                    config=cfg,
+                    console=console,
                     concurrency=concurrency,
                     cache=_cache,
                 )
@@ -280,6 +334,8 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
                     paragraph=paragraph,
                     bleu=bleu,
                     rouge=rouge,
+                    judge=judge,
+                    show_cost=show_cost,
                     fail_under=fail_under,
                     out=out,
                     config=cfg,
@@ -383,6 +439,8 @@ async def _run_batch(
     paragraph: bool,
     bleu: bool,
     rouge: bool,
+    judge: str | None = None,
+    show_cost: bool = False,
     fail_under: float | None,
     out: str | None,
     config: LLMDiffConfig,
@@ -472,6 +530,31 @@ async def _run_batch(
             if rouge:
                 rouge_l_score = compute_rouge_l(text_a, text_b)
 
+        judge_result = None
+        if judge:
+            from llm_diff.judge import run_judge  # noqa: PLC0415
+            judge_result = await run_judge(
+                prompt=item.prompt_text[:200],
+                response_a=comparison.response_a.text,
+                response_b=comparison.response_b.text,
+                judge_model=judge,
+                config=config,
+            )
+
+        cost_a = cost_b = None
+        if show_cost:
+            from llm_diff.pricing import estimate_cost  # noqa: PLC0415
+            cost_a = estimate_cost(
+                comparison.response_a.model,
+                prompt_tokens=comparison.response_a.prompt_tokens,
+                completion_tokens=comparison.response_a.completion_tokens,
+            )
+            cost_b = estimate_cost(
+                comparison.response_b.model,
+                prompt_tokens=comparison.response_b.prompt_tokens,
+                completion_tokens=comparison.response_b.completion_tokens,
+            )
+
         render_diff(
             prompt=item.prompt_text[:60],
             result=comparison,
@@ -481,6 +564,9 @@ async def _run_batch(
             paragraph_scores=paragraph_scores,
             bleu_score=bleu_score,
             rouge_l_score=rouge_l_score,
+            judge_result=judge_result,
+            cost_a=cost_a,
+            cost_b=cost_b,
         )
 
         if verbose:
@@ -544,6 +630,8 @@ async def _run_diff(
     paragraph: bool,
     bleu: bool,
     rouge: bool,
+    judge: str | None = None,
+    show_cost: bool = False,
     fail_under: float | None,
     out: str | None,
     config: LLMDiffConfig,
@@ -609,6 +697,43 @@ async def _run_diff(
         if rouge:
             rouge_l_score = compute_rouge_l(text_a, text_b)
 
+    # ── LLM-as-a-Judge ───────────────────────────────────────────────────────
+    judge_result = None
+    if judge:
+        from llm_diff.judge import run_judge  # noqa: PLC0415
+        with console.status(f"[dim]Calling judge model ({judge})…[/dim]", spinner="dots"):
+            judge_result = await run_judge(
+                prompt=display_prompt,
+                response_a=comparison.response_a.text,
+                response_b=comparison.response_b.text,
+                judge_model=judge,
+                config=config,
+            )
+
+    # ── Cost estimation ───────────────────────────────────────────────────────
+    cost_a = cost_b = None
+    if show_cost:
+        from llm_diff.pricing import estimate_cost  # noqa: PLC0415
+        cost_a = estimate_cost(
+            comparison.response_a.model,
+            prompt_tokens=comparison.response_a.prompt_tokens,
+            completion_tokens=comparison.response_a.completion_tokens,
+        )
+        cost_b = estimate_cost(
+            comparison.response_b.model,
+            prompt_tokens=comparison.response_b.prompt_tokens,
+            completion_tokens=comparison.response_b.completion_tokens,
+        )
+
+    # ── JSON structural diff ─────────────────────────────────────────────────
+    json_struct_result = None
+    if mode == "json-struct":
+        from llm_diff.diff import json_struct_diff  # noqa: PLC0415
+        json_struct_result = json_struct_diff(
+            comparison.response_a.text,
+            comparison.response_b.text,
+        )
+
     # ── Render ───────────────────────────────────────────────────────────────
     if mode == "json":
         _render_json(
@@ -617,6 +742,21 @@ async def _run_diff(
             semantic_score=semantic_score,
             bleu_score=bleu_score,
             rouge_l_score=rouge_l_score,
+            judge_result=judge_result,
+            cost_a=cost_a,
+            cost_b=cost_b,
+        )
+    elif mode == "json-struct":
+        from llm_diff.renderer import render_json_struct_diff  # noqa: PLC0415
+        render_json_struct_diff(
+            prompt=display_prompt,
+            result=comparison,
+            json_struct_result=json_struct_result,
+            diff_result=diff_result,
+            console=console,
+            judge_result=judge_result,
+            cost_a=cost_a,
+            cost_b=cost_b,
         )
     else:
         render_diff(
@@ -628,6 +768,9 @@ async def _run_diff(
             paragraph_scores=paragraph_scores,
             bleu_score=bleu_score,
             rouge_l_score=rouge_l_score,
+            judge_result=judge_result,
+            cost_a=cost_a,
+            cost_b=cost_b,
         )
 
     if verbose:
@@ -658,6 +801,9 @@ async def _run_diff(
             paragraph_scores=paragraph_scores,
             bleu_score=bleu_score,
             rouge_l_score=rouge_l_score,
+            judge_result=judge_result,
+            cost_a=cost_a,
+            cost_b=cost_b,
         )
         if out:
             saved = save_report(html, out)
@@ -681,6 +827,9 @@ def _render_json(
     semantic_score: float | None = None,
     bleu_score: float | None = None,
     rouge_l_score: float | None = None,
+    judge_result: object = None,
+    cost_a: object = None,
+    cost_b: object = None,
 ) -> None:
     ra = comparison.response_a
     rb = comparison.response_b
@@ -699,6 +848,13 @@ def _render_json(
         payload["bleu_score"] = round(bleu_score, 4)
     if rouge_l_score is not None:
         payload["rouge_l_score"] = round(rouge_l_score, 4)
+    if judge_result is not None:
+        payload["judge"] = judge_result.to_dict()  # type: ignore[union-attr]
+    if cost_a is not None and cost_b is not None:
+        payload["cost"] = {
+            "model_a": cost_a.to_dict(),  # type: ignore[union-attr]
+            "model_b": cost_b.to_dict(),  # type: ignore[union-attr]
+        }
     # Use click.echo not console so output is clean, unprettified JSON.
     click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
 
@@ -718,6 +874,97 @@ def _render_verbose(comparison: ComparisonResult, console: Console) -> None:
     table.add_row("Total tokens", str(ra.total_tokens), str(rb.total_tokens))
     table.add_row("Latency (ms)", f"{ra.latency_ms:.0f}", f"{rb.latency_ms:.0f}")
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Multi-model runner
+# ---------------------------------------------------------------------------
+
+
+async def _run_multi(
+    *,
+    prompt: str,
+    models: list[str],
+    semantic: bool,
+    config: LLMDiffConfig,
+    console: Console,
+    concurrency: int,
+    cache: object | None,
+) -> None:
+    """Run *prompt* against all *models* and render a pairwise similarity matrix."""
+    from llm_diff.multi import run_multi_model  # noqa: PLC0415
+    from rich.table import Table  # noqa: PLC0415
+
+    n = len(models)
+    console.print(
+        f"[dim]Running multi-model comparison: {n} models, "
+        f"{n*(n-1)//2} pair(s)…[/dim]"
+    )
+
+    with console.status("[dim]Calling models…[/dim]", spinner="dots"):
+        report = await run_multi_model(
+            prompt,
+            models=models,
+            semantic=semantic,
+            config=config,
+            concurrency=concurrency,
+            cache=cache,
+        )
+
+    # ── Header ───────────────────────────────────────────────────────────────
+    from rich.rule import Rule  # noqa: PLC0415
+    console.print(Rule(style="dim cyan"))
+    from rich.text import Text as RichText  # noqa: PLC0415
+    header = RichText()
+    header.append("  llm-diff", style="bold cyan")
+    header.append("  •  Multi-model comparison", style="dim")
+    console.print(header)
+    prompt_display = prompt if len(prompt) <= 80 else prompt[:77] + "..."
+    console.print(RichText(f"  Prompt: {prompt_display!r}", style="dim white"))
+    console.print(Rule(style="dim cyan"))
+
+    # ── Pairwise matrix table ─────────────────────────────────────────────────
+    score_col = "Semantic" if semantic else "Word similarity"
+    table = Table(
+        title=f"Pairwise {score_col}",
+        show_header=True,
+        header_style="bold cyan",
+        show_lines=True,
+    )
+    table.add_column("Model A", style="yellow")
+    table.add_column("Model B", style="magenta")
+    table.add_column(score_col, justify="right")
+
+    for pair in report.ranked_pairs():
+        score = pair.primary_score
+        if score >= 0.8:
+            style = "bold green"
+        elif score >= 0.5:
+            style = "bold yellow"
+        else:
+            style = "bold red"
+        table.add_row(pair.model_a, pair.model_b, RichText(f"{score:.2%}", style=style))
+
+    console.print(table)
+
+    # ── Per-model responses ───────────────────────────────────────────────────
+    console.print()
+    console.print(RichText("  Individual responses:", style="dim"))
+    for m in models:
+        resp_text = report.responses.get(m, "")
+        mr = report.model_responses.get(m)
+        tokens_info = f"  ({mr.total_tokens} tokens, {mr.latency_ms:.0f}ms)" if mr else ""
+        console.print(
+            RichText(f"\n  [{m}]{tokens_info}", style="bold cyan"),
+        )
+        console.print(
+            RichText(
+                "  " + (resp_text[:300] + "…" if len(resp_text) > 300 else resp_text),
+                style="white",
+            )
+        )
+
+    console.print(Rule(style="dim cyan"))
 
 
 # ---------------------------------------------------------------------------

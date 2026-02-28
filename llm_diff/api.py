@@ -62,6 +62,8 @@ from llm_diff.diff import DiffResult, word_diff
 from llm_diff.providers import ComparisonResult, compare_models
 
 if TYPE_CHECKING:
+    from llm_diff.judge import JudgeResult
+    from llm_diff.pricing import CostEstimate
     from llm_diff.semantic import ParagraphScore
 
 
@@ -102,6 +104,9 @@ class ComparisonReport:
     paragraph_scores: list[ParagraphScore] | None = field(default=None)
     bleu_score: float | None = field(default=None)
     rouge_l_score: float | None = field(default=None)
+    judge_result: JudgeResult | None = field(default=None)
+    cost_a: CostEstimate | None = field(default=None)
+    cost_b: CostEstimate | None = field(default=None)
     html_report: str | None = field(default=None)
 
     # ------------------------------------------------------------------
@@ -136,6 +141,8 @@ async def compare(
     paragraph: bool = False,
     bleu: bool = False,
     rouge: bool = False,
+    judge: str | None = None,
+    show_cost: bool = False,
     build_html: bool = False,
     config: LLMDiffConfig | None = None,
     temperature: float | None = None,
@@ -165,8 +172,12 @@ async def compare(
     bleu:
         When ``True``, compute a sentence-level BLEU score (n-gram precision).
     rouge:
-        When ``True``, compute a ROUGE-L F1 score (longest common subsequence).
-    build_html:
+        When ``True``, compute a ROUGE-L F1 score (longest common subsequence).    judge:
+        When set to a model identifier (e.g. ``"gpt-4o"``), the judge model
+        is called with both responses and returns a winner + reasoning.
+    show_cost:
+        When ``True``, estimate the USD cost of each model call and attach
+        :class:`~llm_diff.pricing.CostEstimate` objects to the report.    build_html:
         When ``True``, render and attach a fully self-contained HTML report.
     config:
         Optional pre-built :class:`~llm_diff.config.LLMDiffConfig`.  When
@@ -202,6 +213,15 @@ async def compare(
         comparison, bleu=bleu, rouge=rouge
     )
 
+    judge_result = await _run_judge(
+        prompt=prompt,
+        comparison=comparison,
+        judge_model=judge,
+        config=cfg,
+    )
+
+    cost_a, cost_b = _compute_cost(comparison, show_cost=show_cost)
+
     html_report: str | None = None
     if build_html:
         from llm_diff.report import build_report  # noqa: PLC0415
@@ -214,6 +234,9 @@ async def compare(
             paragraph_scores=paragraph_scores,
             bleu_score=bleu_score,
             rouge_l_score=rouge_l_score,
+            judge_result=judge_result,
+            cost_a=cost_a,
+            cost_b=cost_b,
         )
 
     return ComparisonReport(
@@ -225,6 +248,9 @@ async def compare(
         paragraph_scores=paragraph_scores,
         bleu_score=bleu_score,
         rouge_l_score=rouge_l_score,
+        judge_result=judge_result,
+        cost_a=cost_a,
+        cost_b=cost_b,
         html_report=html_report,
     )
 
@@ -238,6 +264,8 @@ async def compare_prompts(
     paragraph: bool = False,
     bleu: bool = False,
     rouge: bool = False,
+    judge: str | None = None,
+    show_cost: bool = False,
     build_html: bool = False,
     config: LLMDiffConfig | None = None,
     temperature: float | None = None,
@@ -288,6 +316,15 @@ async def compare_prompts(
         prompt_a if prompt_a == prompt_b else f"{prompt_a[:40]}…"
     )
 
+    judge_result = await _run_judge(
+        prompt=display_prompt,
+        comparison=comparison,
+        judge_model=judge,
+        config=cfg,
+    )
+
+    cost_a, cost_b = _compute_cost(comparison, show_cost=show_cost)
+
     html_report: str | None = None
     if build_html:
         from llm_diff.report import build_report  # noqa: PLC0415
@@ -300,6 +337,9 @@ async def compare_prompts(
             paragraph_scores=paragraph_scores,
             bleu_score=bleu_score,
             rouge_l_score=rouge_l_score,
+            judge_result=judge_result,
+            cost_a=cost_a,
+            cost_b=cost_b,
         )
 
     return ComparisonReport(
@@ -311,6 +351,9 @@ async def compare_prompts(
         paragraph_scores=paragraph_scores,
         bleu_score=bleu_score,
         rouge_l_score=rouge_l_score,
+        judge_result=judge_result,
+        cost_a=cost_a,
+        cost_b=cost_b,
         html_report=html_report,
     )
 
@@ -324,6 +367,8 @@ async def compare_batch(
     paragraph: bool = False,
     bleu: bool = False,
     rouge: bool = False,
+    judge: str | None = None,
+    show_cost: bool = False,
     build_html: bool = False,
     config: LLMDiffConfig | None = None,
     temperature: float | None = None,
@@ -344,7 +389,7 @@ async def compare_batch(
         Model identifier for side A.
     model_b:
         Model identifier for side B.
-    semantic, paragraph, bleu, rouge, build_html, config, temperature, max_tokens, timeout:
+    semantic, paragraph, bleu, rouge, judge, show_cost, build_html, config, temperature, max_tokens, timeout:
         See :func:`compare`.
 
     Returns
@@ -367,6 +412,8 @@ async def compare_batch(
             paragraph=paragraph,
             bleu=bleu,
             rouge=rouge,
+            judge=judge,
+            show_cost=show_cost,
             build_html=build_html,
             config=cfg,
         )
@@ -465,3 +512,51 @@ def _compute_metrics(
         rouge_l_score = compute_rouge_l(text_a, text_b)
 
     return bleu_score, rouge_l_score
+
+
+async def _run_judge(
+    *,
+    prompt: str,
+    comparison: ComparisonResult,
+    judge_model: str | None,
+    config: LLMDiffConfig,
+) -> JudgeResult | None:
+    """Run the LLM-as-a-Judge if *judge_model* is set; else return ``None``."""
+    if not judge_model:
+        return None
+
+    from llm_diff.judge import run_judge  # noqa: PLC0415
+
+    return await run_judge(
+        prompt=prompt,
+        response_a=comparison.response_a.text,
+        response_b=comparison.response_b.text,
+        judge_model=judge_model,
+        config=config,
+    )
+
+
+def _compute_cost(
+    comparison: ComparisonResult,
+    *,
+    show_cost: bool,
+) -> tuple[CostEstimate | None, CostEstimate | None]:
+    """Estimate cost for both model calls if *show_cost* is ``True``."""
+    if not show_cost:
+        return None, None
+
+    from llm_diff.pricing import estimate_cost  # noqa: PLC0415
+
+    ra = comparison.response_a
+    rb = comparison.response_b
+    cost_a = estimate_cost(
+        ra.model,
+        prompt_tokens=ra.prompt_tokens,
+        completion_tokens=ra.completion_tokens,
+    )
+    cost_b = estimate_cost(
+        rb.model,
+        prompt_tokens=rb.prompt_tokens,
+        completion_tokens=rb.completion_tokens,
+    )
+    return cost_a, cost_b
