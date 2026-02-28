@@ -6,7 +6,7 @@
 ![CI](https://img.shields.io/github/actions/workflow/status/user/llm-diff/ci.yml?branch=main)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![Python](https://img.shields.io/pypi/pyversions/llm-diff)
-![License](https://img.shields.io/github/license/user/llm-diff)
+![License](https://img.shields.io/pypi/l/llm-diff)
 ![Status](https://img.shields.io/badge/status-production--stable-brightgreen)
 
 ---
