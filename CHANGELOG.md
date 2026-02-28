@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.1] — 2026-02-28
+
+### Fixed
+
+- Corrected GitHub repository URLs throughout documentation and `pyproject.toml`
+  (`sriramrathinavelu` → `veerarag1973`).
+
+---
+
 ## [1.2.0] — 2026-02-28
 
 ### Added — Tier 1: Evaluation Depth

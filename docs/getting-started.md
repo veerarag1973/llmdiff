@@ -32,7 +32,7 @@ The `[semantic]` extra installs `sentence-transformers`.  The default model
 ### Development install
 
 ```bash
-git clone https://github.com/sriramrathinavelu/llm-diff.git
+git clone https://github.com/veerarag1973/llm-diff.git
 cd llm-diff
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate

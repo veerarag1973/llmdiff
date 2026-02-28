@@ -3,8 +3,8 @@
 **A CLI tool and Python library for comparing LLM outputs — semantically, visually, and at scale.**
 
 [![PyPI](https://img.shields.io/pypi/v/llm-diff)](https://pypi.org/project/llm-diff/)
-[![CI](https://img.shields.io/github/actions/workflow/status/sriramrathinavelu/llm-diff/ci.yml?branch=main)](https://github.com/sriramrathinavelu/llm-diff/actions)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/sriramrathinavelu/llm-diff)
+[![CI](https://img.shields.io/github/actions/workflow/status/veerarag1973/llm-diff/ci.yml?branch=main)](https://github.com/veerarag1973/llm-diff/actions)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/veerarag1973/llm-diff)
 [![Python](https://img.shields.io/pypi/pyversions/llm-diff)](https://pypi.org/project/llm-diff/)
 [![License](https://img.shields.io/pypi/l/llm-diff)](LICENSE)
 [![Status](https://img.shields.io/badge/status-production--stable-brightgreen)](CHANGELOG.md)
@@ -71,10 +71,10 @@ multi-model comparison.
 
 | | |
 |---|---|
-| **Bug reports** | [Open an issue](https://github.com/sriramrathinavelu/llm-diff/issues/new?labels=bug&template=bug_report.md) |
-| **Feature requests** | [Open a feature request](https://github.com/sriramrathinavelu/llm-diff/issues/new?labels=enhancement&template=feature_request.md) |
-| **Questions & discussion** | [GitHub Discussions](https://github.com/sriramrathinavelu/llm-diff/discussions) |
-| **Open issues** | [github.com/sriramrathinavelu/llm-diff/issues](https://github.com/sriramrathinavelu/llm-diff/issues) |
+| **Bug reports** | [Open an issue](https://github.com/veerarag1973/llm-diff/issues/new?labels=bug&template=bug_report.md) |
+| **Feature requests** | [Open a feature request](https://github.com/veerarag1973/llm-diff/issues/new?labels=enhancement&template=feature_request.md) |
+| **Questions & discussion** | [GitHub Discussions](https://github.com/veerarag1973/llm-diff/discussions) |
+| **Open issues** | [github.com/veerarag1973/llm-diff/issues](https://github.com/veerarag1973/llm-diff/issues) |
 | **Roadmap** | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 
