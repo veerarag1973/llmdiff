@@ -19,6 +19,7 @@ A hands-on learning path from your first comparison to production evaluation pip
 | [08](08-cost-tracking.md) | Cost Tracking | Advanced | 10 min |
 | [09](09-json-struct-diff.md) | Structured JSON Diff | Advanced | 10 min |
 | [10](10-python-api.md) | Using the Python API | Advanced | 20 min |
+| [11](11-schema-events.md) | Schema Events & Observability | Advanced | 15 min |
 
 ---
 

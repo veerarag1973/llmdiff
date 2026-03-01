@@ -233,3 +233,4 @@ See [CI / CD Integration](ci-cd.md) for full GitHub Actions examples.
 | Provider setup (Groq, Ollama, …) | [Provider Setup](providers.md) |
 | HTML report anatomy | [HTML Reports](html-reports.md) |
 | CI/CD pipeline integration | [CI / CD Integration](ci-cd.md) |
+| Observability / schema events | [Schema Events](schema-events.md) |

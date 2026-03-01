@@ -2,8 +2,8 @@
 
 **A CLI tool and Python library for comparing LLM outputs — semantically, visually, and at scale.**
 
-[![PyPI](https://img.shields.io/badge/PyPI-1.2.1-blue?logo=pypi&logoColor=white)](https://pypi.org/project/llm-diff/1.2.1/)
-[![Tests](https://img.shields.io/badge/tests-661%20passed-brightgreen)](https://pypi.org/project/llm-diff/)
+[![PyPI](https://img.shields.io/badge/PyPI-1.2.2-blue?logo=pypi&logoColor=white)](https://pypi.org/project/llm-diff/1.2.2/)
+[![Tests](https://img.shields.io/badge/tests-715%20passed-brightgreen)](https://pypi.org/project/llm-diff/)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://pypi.org/project/llm-diff/)
 [![Python](https://img.shields.io/pypi/pyversions/llm-diff)](https://pypi.org/project/llm-diff/)
 [![License](https://img.shields.io/pypi/l/llm-diff)](LICENSE)
@@ -14,7 +14,9 @@
 `llm-diff` calls two LLM models in parallel, diffs their responses word-by-word,
 scores them semantically, and renders results in the terminal or as a
 self-contained HTML report.  It scales to batch workloads, caches API responses,
-and gates CI pipelines via `--fail-under`.
+gates CI pipelines via `--fail-under`, and emits structured
+[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/) events for
+observability tooling.
 
 ## What is llm-diff?
 
@@ -32,14 +34,20 @@ threshold — making it a first-class citizen in CI/CD pipelines.
 Version 1.2 adds LLM-as-a-Judge scoring, per-call USD cost tracking,
 multi-model (3–4 model) comparison, and structured JSON diff.
 
+Version 1.2.2 integrates [llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/)
+as a built-in observability layer: every comparison, model call, cache lookup,
+cost record, and judge evaluation now emits a validated schema event that can be
+collected in memory, exported to JSONL, or forwarded to any custom backend.
+
 ## Documentation
 
 | Guide | Description |
 |-------|-------------|
 | [Getting Started](docs/getting-started.md) | Installation, API keys, first diff |
-| [Tutorials](docs/tutorials/README.md) | Step-by-step learning path from first run to Python API (11 tutorials) |
+| [Tutorials](docs/tutorials/README.md) | Step-by-step learning path from first run to Python API (12 tutorials) |
 | [CLI Reference](docs/cli-reference.md) | All flags, option groups, exit codes, YAML format |
 | [Python API](docs/api.md) | All public functions, dataclasses, and field descriptions |
+| [Schema Events](docs/schema-events.md) | Observability integration with llm-toolkit-schema |
 | [Configuration](docs/configuration.md) | `.llmdiff` TOML schema, env vars, config priority |
 | [Provider Setup](docs/providers.md) | OpenAI, Groq, Mistral, Ollama, LM Studio, Anthropic |
 | [HTML Reports](docs/html-reports.md) | Report anatomy, batch reports, judge card, cost table |
@@ -50,6 +58,9 @@ multi-model (3–4 model) comparison, and structured JSON diff.
 ```bash
 # Install with semantic scoring support
 pip install "llm-diff[semantic]"
+
+# Install with schema-events observability
+pip install "llm-diff[semantic]" llm-toolkit-schema
 
 # Set an API key
 export OPENAI_API_KEY="sk-..."

@@ -218,6 +218,23 @@ def save_report(html: str, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(html, encoding="utf-8")
     logger.info("Report saved to %s (%d bytes)", path, len(html))
+
+    # Emit report exported schema event (best-effort)
+    try:
+        from llm_diff.schema_events import (  # noqa: PLC0415
+            emit as schema_emit,
+            make_report_exported_event,
+        )
+
+        schema_emit(
+            make_report_exported_event(
+                output_path=str(path),
+                format="html",
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
     return path
 
 

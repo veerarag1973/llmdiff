@@ -146,7 +146,7 @@ async def _call_model(
                     model,
                 )
 
-            return ModelResponse(
+            response_obj = ModelResponse(
                 model=model,
                 text=text,
                 prompt_tokens=usage.prompt_tokens if usage else 0,
@@ -155,6 +155,34 @@ async def _call_model(
                 latency_ms=round(elapsed_ms, 1),
                 provider=provider_name,
             )
+
+            # Emit schema trace span event (best-effort — never fails the call)
+            try:
+                from llm_diff.schema_events import (  # noqa: PLC0415
+                    emit as schema_emit,
+                    make_trace_span_event,
+                )
+
+                schema_emit(
+                    make_trace_span_event(
+                        model=model,
+                        prompt_tokens=response_obj.prompt_tokens,
+                        completion_tokens=response_obj.completion_tokens,
+                        total_tokens=response_obj.total_tokens,
+                        latency_ms=response_obj.latency_ms,
+                        finish_reason=(
+                            response.choices[0].finish_reason
+                            if response.choices
+                            else None
+                        ),
+                        stream=False,
+                        provider=provider_name,
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                pass  # schema events are best-effort
+
+            return response_obj
 
         except asyncio.TimeoutError as exc:
             last_exc = exc

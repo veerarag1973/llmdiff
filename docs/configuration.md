@@ -249,3 +249,65 @@ Cache location: `~/.cache/llm-diff/`
 
 The cache uses JSON files keyed by a SHA-256 hash of the request parameters.
 It is safe to delete the entire cache directory at any time.
+
+---
+
+## Observability — Schema Events
+
+`llm-diff` emits structured
+[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/) events for
+every significant operation.  By default events are built, validated, and
+**discarded** (zero overhead for existing users).  To opt in, call
+`configure_emitter()` once before running any comparisons.
+
+### Collect events in memory
+
+```python
+from llm_diff.schema_events import configure_emitter, get_emitter
+
+configure_emitter()    # keep events in memory
+
+# ... run comparisons ...
+
+for evt in get_emitter().events:
+    print(evt.event_type, evt.timestamp)
+```
+
+### Export to JSONL
+
+```python
+from llm_toolkit_schema.export.jsonl import JSONLExporter
+from llm_diff.schema_events import configure_emitter
+
+configure_emitter(exporter=JSONLExporter("llm-diff-events.jsonl"))
+```
+
+Each line of the JSONL file is a self-contained JSON object conforming to the
+`llm-toolkit-schema` envelope.
+
+### Export to a custom sink
+
+Any callable (or object with an `.export(event)` method) works as an exporter:
+
+```python
+def my_sink(event):
+    requests.post("https://events.example.com", json=event.to_dict())
+
+configure_emitter(exporter=my_sink)
+```
+
+### Event types emitted
+
+| Event type | Emitted when |
+|------------|--------------|
+| `llm.diff.comparison.started` | `compare()` / `compare_prompts()` is called |
+| `llm.diff.comparison.completed` | Diff result is ready |
+| `llm.diff.report.exported` | `save_report()` writes a file |
+| `llm.trace.span.completed` | Each model API call returns |
+| `llm.cache.hit` | A cached response is served |
+| `llm.cache.miss` | No cache entry found; API is called |
+| `llm.cost.recorded` | `show_cost=True` and cost is estimated |
+| `llm.eval.scenario.completed` | LLM-as-a-Judge scoring finishes |
+
+See [Schema Events](schema-events.md) for the full guide and payload field
+reference.

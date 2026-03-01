@@ -11,6 +11,45 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.2] — 2026-03-01
+
+### Added
+
+- **llm-toolkit-schema integration** — `llm-diff` now depends on
+  `llm-toolkit-schema>=1.1.0` and emits a structured, validated schema event
+  for every significant pipeline operation:
+  - `llm.diff.comparison.started` — before any model calls
+  - `llm.diff.comparison.completed` — after diff is computed (`DiffComparisonPayload`)
+  - `llm.diff.report.exported` — after `save_report()` (`DiffReportPayload`)
+  - `llm.trace.span.completed` — after each model API call (`SpanCompletedPayload`)
+  - `llm.cache.hit` / `llm.cache.miss` — on every cache lookup
+  - `llm.cost.recorded` — when `show_cost=True` (`CostRecordedPayload`)
+  - `llm.eval.scenario.completed` — after LLM-as-a-Judge scoring (`EvalScenarioPayload`)
+- New module `llm_diff/schema_events.py` — `EventEmitter`, `configure_emitter()`,
+  `get_emitter()`, `emit()`, and all `make_*_event()` factory functions.
+- `DiffResult.as_unified_diff()` — produces a compact unified-diff string from
+  word-level diff chunks.
+- `DiffResult.to_schema_payload()`, `JudgeResult.to_schema_payload()`, and
+  `CostEstimate.to_schema_payload()` — convenience helpers that map each
+  dataclass to its corresponding schema payload field names.
+- All schema event functions exported from the top-level `llm_diff` package.
+- New documentation:
+  - [`docs/schema-events.md`](docs/schema-events.md) — full event-type and
+    payload field reference.
+  - [`docs/tutorials/11-schema-events.md`](docs/tutorials/11-schema-events.md)
+    — hands-on tutorial covering in-memory collection, JSONL export, custom
+    sinks, event correlation, and audit logging.
+
+### Changed
+
+- Events are **zero-configuration by default** — unless `configure_emitter()`
+  is called, events are built, validated, and silently discarded.  No existing
+  behaviour changes.
+- Test suite expanded from 661 to 715 tests; 54 new tests cover the complete
+  schema events integration in `tests/test_schema_events.py`.
+
+---
+
 ## [1.2.1] — 2026-02-28
 
 ### Fixed

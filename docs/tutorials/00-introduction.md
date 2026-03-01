@@ -244,6 +244,20 @@ llm-diff 'Return JSON: {"name": "...", "age": ...}' \
   -a gpt-4o -b gpt-4o-mini --mode json-struct
 ```
 
+### Schema events & observability
+
+Every comparison, model call, cache lookup, cost estimate, and judge evaluation
+automatically emits a structured [llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/)
+event.  Attach any exporter to ship events to JSONL, a database, or a custom
+observability backend with one line of configuration:
+
+```python
+from llm_toolkit_schema.export.jsonl import JSONLExporter
+from llm_diff.schema_events import configure_emitter
+
+configure_emitter(exporter=JSONLExporter("events.jsonl"))
+```
+
 ---
 
 ## 5. What You Will Learn in These Tutorials
@@ -260,6 +274,7 @@ llm-diff 'Return JSON: {"name": "...", "age": ...}' \
 | 08 — Cost Tracking | Estimate and track USD spend per evaluation run |
 | 09 — JSON Struct Diff | Key-by-key diff for structured JSON responses |
 | 10 — Python API | Integrate `llm-diff` into scripts, tests, and evaluation harnesses |
+| 11 — Schema Events | Capture and export structured observability events |
 
 ---
 

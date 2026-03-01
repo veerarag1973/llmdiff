@@ -146,13 +146,42 @@ class ResultCache:
 
         path = self._entry_path(key)
         if not path.is_file():
+            # Emit cache miss event
+            try:
+                from llm_diff.schema_events import emit as schema_emit, make_cache_event  # noqa: PLC0415
+
+                schema_emit(
+                    make_cache_event(
+                        hit=False,
+                        cache_key=key[:16],
+                        backend="disk",
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                pass
             return None
 
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             from llm_diff.providers import ModelResponse  # noqa: PLC0415
 
-            return ModelResponse(**data)
+            cached_response = ModelResponse(**data)
+
+            # Emit cache hit event
+            try:
+                from llm_diff.schema_events import emit as schema_emit, make_cache_event  # noqa: PLC0415
+
+                schema_emit(
+                    make_cache_event(
+                        hit=True,
+                        cache_key=key[:16],
+                        backend="disk",
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+            return cached_response
         except Exception:  # noqa: BLE001
             logger.warning("Cache entry for key %s is corrupt — ignoring.", key[:8])
             return None

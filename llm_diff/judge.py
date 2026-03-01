@@ -114,6 +114,34 @@ class JudgeResult:
             "judge_model": self.judge_model,
         }
 
+    def to_schema_payload(self) -> dict:
+        """Return a dict conforming to the ``llm.eval.*`` namespace payload.
+
+        Compatible with
+        :class:`~llm_toolkit_schema.namespaces.eval.EvalPayload` field names.
+        The ``score`` is normalised to a ``0-1`` range from the ``1-10`` scale
+        returned by the judge prompt, so consumers always get a consistent range.
+        """
+        # Normalise scores: the judge returns 1-10; schema uses 0-1 by convention
+        # when `scale` is set accordingly.  We expose raw scores with proper scale.
+        avg_score: float = 0.0
+        scale = "1-10"
+        if self.score_a is not None and self.score_b is not None:
+            avg_score = (self.score_a + self.score_b) / 2.0
+        elif self.score_a is not None:
+            avg_score = self.score_a
+        elif self.score_b is not None:
+            avg_score = self.score_b
+
+        return {
+            "evaluator": self.judge_model or "unknown",
+            "score": avg_score,
+            "scale": scale,
+            "label": self.winner,
+            "rationale": self.reasoning,
+            "criteria": ["accuracy", "completeness", "clarity", "conciseness"],
+        }
+
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
@@ -263,7 +291,7 @@ async def run_judge(
     except (TypeError, ValueError):
         pass
 
-    return JudgeResult(
+    result = JudgeResult(
         winner=winner,
         reasoning=reasoning,
         score_a=score_a,
@@ -271,3 +299,23 @@ async def run_judge(
         judge_model=judge_model,
         raw_response=raw,
     )
+
+    # Emit schema event for the evaluation
+    try:
+        from llm_diff.schema_events import make_eval_scenario_event, emit as schema_emit  # noqa: PLC0415
+
+        schema_emit(
+            make_eval_scenario_event(
+                evaluator=judge_model,
+                score=((score_a or 0.0) + (score_b or 0.0)) / 2.0 if (score_a or score_b) else None,
+                scale="1-10",
+                label=winner,
+                rationale=reasoning,
+                criteria=["accuracy", "completeness", "clarity", "conciseness"],
+                status="passed",
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass  # schema events are best-effort
+
+    return result

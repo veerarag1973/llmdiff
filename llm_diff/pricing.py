@@ -158,6 +158,20 @@ class CostEstimate:
             "known_model": self.known_model,
         }
 
+    def to_schema_payload(self) -> dict:
+        """Return a dict conforming to the ``llm.cost.*`` namespace payload.
+
+        Compatible with
+        :class:`~llm_toolkit_schema.namespaces.cost.CostPayload` field names.
+        """
+        return {
+            "input_cost": round(self.prompt_usd, 6),
+            "output_cost": round(self.completion_usd, 6),
+            "total_cost": round(self.total_usd, 6),
+            "currency": "USD",
+            "pricing_tier": None,
+        }
+
     @property
     def total_usd_str(self) -> str:
         """Human-readable cost string (e.g. ``'$0.000250'``)."""

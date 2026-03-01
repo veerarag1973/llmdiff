@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>llm-diff — gpt-4o vs claude-3-5-sonnet</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --bg-card: #1a1d27;
+      --bg-card2: #22263a;
+      --border: #2e3350;
+      --text: #e2e8f0;
+      --text-dim: #8892ab;
+      --accent: #6c8eff;
+      --green: #4ade80;
+      --green-bg: rgba(74,222,128,0.12);
+      --red: #f87171;
+      --red-bg: rgba(248,113,113,0.12);
+      --yellow: #fbbf24;
+      --radius: 8px;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 24px 16px 48px;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    /* ── Header ────────────────────────────────────────────────────────────── */
+    .header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .header h1 { font-size: 20px; font-weight: 700; color: var(--accent); }
+    .header .subtitle { color: var(--text-dim); margin-top: 4px; font-size: 13px; }
+    /* ── Metadata card ──────────────────────────────────────────────────────── */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .meta-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+    }
+    .meta-card .label { font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 4px; }
+    .meta-card .value { font-weight: 600; font-size: 15px; }
+    .meta-card .value.mono { font-family: var(--font-mono); font-size: 13px; }
+    .score-high { color: var(--green); }
+    .score-mid  { color: var(--yellow); }
+    .score-low  { color: var(--red); }
+    /* ── Prompt ─────────────────────────────────────────────────────────────── */
+    .prompt-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 24px;
+    }
+    .prompt-box .label { font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 6px; }
+    .prompt-box .prompt-text {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    /* ── Diff view ──────────────────────────────────────────────────────────── */
+    .diff-section { margin-bottom: 24px; }
+    .diff-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .diff-header h2 { font-size: 14px; font-weight: 600; color: var(--text-dim); }
+    .toolbar { display: flex; gap: 8px; }
+    .btn {
+      background: var(--bg-card2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 3px 10px;
+      transition: border-color 0.15s;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn.active { border-color: var(--accent); color: var(--accent); }
+    .diff-body {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-x: auto;
+    }
+    .eq  { color: var(--text); }
+    .ins { background: var(--green-bg); color: var(--green); border-radius: 2px; }
+    .del { background: var(--red-bg);   color: var(--red);   border-radius: 2px;
+           text-decoration: line-through; }
+    .del.hidden { display: none; }
+    /* ── Legend ─────────────────────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 16px;
+      font-size: 12px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+    .legend-dot.ins { background: var(--green); }
+    .legend-dot.del { background: var(--red); }
+    .legend-dot.eq  { background: var(--text-dim); }
+    /* ── Models comparison ───────────────────────────────────────────────────── */
+    .models-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .model-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .model-card .model-name {
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .model-card.a .model-name { color: #facc15; }
+    .model-card.b .model-name { color: #c084fc; }
+    .model-card .response-text {
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    /* ── Stats row ───────────────────────────────────────────────────────────── */
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 8px;
+    }
+    .stats-row span { display: flex; gap: 4px; align-items: center; }
+    .stats-row strong { color: var(--text); }
+    /* ── Paragraph similarity section ───────────────────────────────────────── */
+    .para-section { margin-bottom: 24px; }
+    .para-table { width: 100%; border-collapse: collapse; }
+    .para-table th {
+      background: var(--bg-card2);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      text-align: left;
+    }
+    .para-table td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      font-size: 12px;
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .para-table tr:nth-child(even) td { background: var(--bg-card); }
+    .para-table tr:nth-child(odd) td { background: var(--bg); }
+    .para-num {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
+    .score-pill {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .score-pill.score-high { background: var(--green-bg); color: var(--green); }
+    .score-pill.score-mid  { background: rgba(251,191,36,0.12); color: var(--yellow); }
+    .score-pill.score-low  { background: var(--red-bg); color: var(--red); }
+    .para-text-empty { color: var(--text-dim); font-style: italic; font-size: 11px; }
+    /* ── Footer ─────────────────────────────────────────────────────────────── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      margin-top: 32px;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>llm-diff Report</h1>
+    <div class="subtitle">Generated 2026-03-01 04:57 UTC  ·  llm-diff v1.2.2</div>
+  </div>
+
+  <!-- Metadata grid -->
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="label">Model A</div>
+      <div class="value mono">gpt-4o</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Model B</div>
+      <div class="value mono">claude-3-5-sonnet</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Word Similarity</div>
+      <div class="value score-mid">50.00%</div>
+    </div>
+    
+    
+    
+    
+    
+    <div class="meta-card">
+      <div class="label">Tokens (A / B)</div>
+      <div class="value">30 / 30</div>
+    </div>
+    <div class="meta-card">
+      <div class="label">Latency (A / B)</div>
+      <div class="value">100ms / 200ms</div>
+    </div>
+  </div>
+
+  <!-- Prompt -->
+  <div class="prompt-box">
+    <div class="label">Prompt</div>
+    <div class="prompt-text">Hello</div>
+  </div>
+
+  
+
+  <!-- Word diff -->
+  <div class="diff-section">
+    <div class="diff-header">
+      <h2>Word Diff</h2>
+      <div class="toolbar">
+        <button class="btn active" id="btn-show-del" onclick="toggleDel()">Show deletions</button>
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot ins"></div> Model B additions</div>
+      <div class="legend-item"><div class="legend-dot del"></div> Model A deletions</div>
+      <div class="legend-item"><div class="legend-dot eq"></div> Unchanged</div>
+    </div>
+    <div class="diff-body" id="diff-body"><span class="eq">The </span><span class="del">quick </span><span class="ins">slow </span><span class="eq">brown </span><span class="del">fox</span><span class="ins">wolf</span></div>
+  </div>
+
+  <!-- Side-by-side responses -->
+  <div class="diff-section" style="margin-bottom: 16px;">
+    <div class="diff-header">
+      <h2>Side-by-side Responses</h2>
+      <div class="toolbar">
+        <button class="btn active" id="btn-responses" onclick="toggleResponses()">Collapse</button>
+      </div>
+    </div>
+  </div>
+  <div id="responses-container">
+  <div class="models-row">
+    <div class="model-card a">
+      <div class="model-name">[A] gpt-4o</div>
+      <div class="response-text">The quick brown fox</div>
+      <div class="stats-row">
+        <span>Tokens: <strong>30</strong></span>
+        <span>Latency: <strong>100ms</strong></span>
+      </div>
+    </div>
+    <div class="model-card b">
+      <div class="model-name">[B] claude-3-5-sonnet</div>
+      <div class="response-text">The slow brown wolf</div>
+      <div class="stats-row">
+        <span>Tokens: <strong>30</strong></span>
+        <span>Latency: <strong>200ms</strong></span>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  
+
+  <div class="footer">
+    Generated by <strong>llm-diff</strong> v1.2.2 · No external resources · Fully offline
+  </div>
+
+</div>
+<script>
+  var showDel = true;
+  function toggleDel() {
+    showDel = !showDel;
+    var spans = document.querySelectorAll('.del');
+    for (var i = 0; i < spans.length; i++) {
+      spans[i].classList.toggle('hidden', !showDel);
+    }
+    var btn = document.getElementById('btn-show-del');
+    btn.textContent = showDel ? 'Show deletions' : 'Hide deletions';
+    btn.classList.toggle('active', showDel);
+  }
+
+  var responsesExpanded = true;
+  function toggleResponses() {
+    responsesExpanded = !responsesExpanded;
+    var container = document.getElementById('responses-container');
+    var btn = document.getElementById('btn-responses');
+    container.style.display = responsesExpanded ? '' : 'none';
+    btn.textContent = responsesExpanded ? 'Collapse' : 'Expand';
+    btn.classList.toggle('active', responsesExpanded);
+  }
+
+  var paraExpanded = true;
+  function toggleParagraphs() {
+    paraExpanded = !paraExpanded;
+    var container = document.getElementById('para-container');
+    var btn = document.getElementById('btn-para');
+    if (container) {
+      container.style.display = paraExpanded ? '' : 'none';
+      btn.textContent = paraExpanded ? 'Collapse' : 'Expand';
+      btn.classList.toggle('active', paraExpanded);
+    }
+  }
+</script>
+</body>
+</html>

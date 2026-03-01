@@ -196,6 +196,24 @@ async def compare(
     """
     cfg = _resolve_config(config, temperature=temperature, max_tokens=max_tokens, timeout=timeout)
 
+    # Emit comparison started event (best-effort)
+    _started_event_id: str = ""
+    try:
+        from llm_diff.schema_events import (  # noqa: PLC0415
+            emit as schema_emit,
+            make_comparison_started_event,
+        )
+
+        started_evt = make_comparison_started_event(
+            model_a=model_a,
+            model_b=model_b,
+            prompt=prompt,
+        )
+        schema_emit(started_evt)
+        _started_event_id = started_evt.event_id
+    except Exception:  # noqa: BLE001
+        pass
+
     comparison = await compare_models(
         prompt_a=prompt,
         prompt_b=prompt,
@@ -222,6 +240,42 @@ async def compare(
 
     cost_a, cost_b = _compute_cost(comparison, show_cost=show_cost)
 
+    # Emit cost recorded events for each model call (best-effort)
+    if cost_a is not None:
+        try:
+            from llm_diff.schema_events import (  # noqa: PLC0415
+                emit as schema_emit,
+                make_cost_recorded_event,
+            )
+
+            schema_emit(
+                make_cost_recorded_event(
+                    input_cost=cost_a.prompt_usd,
+                    output_cost=cost_a.completion_usd,
+                    total_cost=cost_a.total_usd,
+                    model=cost_a.model,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    if cost_b is not None:
+        try:
+            from llm_diff.schema_events import (  # noqa: PLC0415
+                emit as schema_emit,
+                make_cost_recorded_event,
+            )
+
+            schema_emit(
+                make_cost_recorded_event(
+                    input_cost=cost_b.prompt_usd,
+                    output_cost=cost_b.completion_usd,
+                    total_cost=cost_b.total_usd,
+                    model=cost_b.model,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
     html_report: str | None = None
     if build_html:
         from llm_diff.report import build_report  # noqa: PLC0415
@@ -238,6 +292,26 @@ async def compare(
             cost_a=cost_a,
             cost_b=cost_b,
         )
+
+    # Emit comparison completed event (best-effort)
+    try:
+        from llm_diff.schema_events import (  # noqa: PLC0415
+            emit as schema_emit,
+            make_comparison_completed_event,
+        )
+
+        schema_emit(
+            make_comparison_completed_event(
+                model_a=model_a,
+                model_b=model_b,
+                diff_type="completion",
+                completion_diff=diff_result.as_unified_diff() or None,
+                similarity_score=diff_result.similarity,
+                base_event_id=_started_event_id,
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
     return ComparisonReport(
         prompt_a=prompt,
@@ -295,6 +369,24 @@ async def compare_prompts(
     """
     cfg = _resolve_config(config, temperature=temperature, max_tokens=max_tokens, timeout=timeout)
 
+    # Emit comparison started event (best-effort) — diff_type is "prompt"
+    _started_event_id_p: str = ""
+    try:
+        from llm_diff.schema_events import (  # noqa: PLC0415
+            emit as schema_emit,
+            make_comparison_started_event,
+        )
+
+        started_evt = make_comparison_started_event(
+            model_a=model,
+            model_b=model,
+            prompt=prompt_a,
+        )
+        schema_emit(started_evt)
+        _started_event_id_p = started_evt.event_id
+    except Exception:  # noqa: BLE001
+        pass
+
     comparison = await compare_models(
         prompt_a=prompt_a,
         prompt_b=prompt_b,
@@ -341,6 +433,26 @@ async def compare_prompts(
             cost_a=cost_a,
             cost_b=cost_b,
         )
+
+    # Emit comparison completed event (prompt diff, best-effort)
+    try:
+        from llm_diff.schema_events import (  # noqa: PLC0415
+            emit as schema_emit,
+            make_comparison_completed_event,
+        )
+
+        schema_emit(
+            make_comparison_completed_event(
+                model_a=model,
+                model_b=model,
+                diff_type="prompt",
+                completion_diff=diff_result.as_unified_diff() or None,
+                similarity_score=diff_result.similarity,
+                base_event_id=_started_event_id_p,
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
     return ComparisonReport(
         prompt_a=prompt_a,

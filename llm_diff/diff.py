@@ -61,6 +61,42 @@ class DiffResult:
             "word_count_b": self.word_count_b,
         }
 
+    def as_unified_diff(self) -> str:
+        """Return a compact unified-diff string from the chunks.
+
+        The output is a lightweight diff that summarises the DELETE and INSERT
+        segments.  It is suitable for embedding in a schema
+        :class:`~llm_toolkit_schema.namespaces.diff.DiffPayload`.
+        """
+        lines: list[str] = ["--- model_a", "+++ model_b"]
+        for chunk in self.chunks:
+            if chunk.type == DiffType.DELETE:
+                for line in chunk.text.splitlines(keepends=True):
+                    lines.append(f"-{line}" if line.endswith("\n") else f"-{line}\n")
+            elif chunk.type == DiffType.INSERT:
+                for line in chunk.text.splitlines(keepends=True):
+                    lines.append(f"+{line}" if line.endswith("\n") else f"+{line}\n")
+        return "".join(lines) if len(lines) > 2 else ""
+
+    def to_schema_payload(self, base_event_id: str = "") -> dict:
+        """Return a dict conforming to the ``llm.diff.*`` namespace payload.
+
+        Compatible with
+        :class:`~llm_toolkit_schema.namespaces.diff.DiffPayload` field names.
+
+        Parameters
+        ----------
+        base_event_id:
+            ULID of the ``comparison.started`` event this result belongs to.
+        """
+        return {
+            "base_event_id": base_event_id,
+            "diff_type": "completion",
+            "prompt_diff": None,
+            "completion_diff": self.as_unified_diff() or None,
+            "similarity_score": round(self.similarity, 4),
+        }
+
 
 # ---------------------------------------------------------------------------
 # Tokenisation

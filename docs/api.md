@@ -479,3 +479,123 @@ report = asyncio.run(
 save_report(report.html_report, "report.html")
 print("Saved to report.html")
 ```
+
+---
+
+## Schema Events
+
+Every `llm-diff` operation emits a structured
+[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/) event that
+can be collected in memory, exported to JSONL, or forwarded to any custom
+backend.  The integration is **zero-configuration by default** — events are
+built and validated but discarded unless you opt in.
+
+See the full guide at [docs/schema-events.md](schema-events.md).
+
+---
+
+### `configure_emitter()`
+
+Replace the global event emitter.  Call once at application startup.
+
+```python
+from llm_diff.schema_events import configure_emitter
+
+configure_emitter()          # in-memory only (default)
+```
+
+With a JSONL exporter:
+
+```python
+from llm_toolkit_schema.export.jsonl import JSONLExporter
+from llm_diff.schema_events import configure_emitter
+
+configure_emitter(exporter=JSONLExporter("llm-diff-events.jsonl"))
+```
+
+**Parameters**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `exporter` | callable or object with `.export()` | `None` | Receives every emitted event. |
+| `collect` | `bool` | `True` | Keep events in `get_emitter().events`. Set to `False` to reduce memory use in long-running processes. |
+
+**Returns** `EventEmitter`
+
+---
+
+### `get_emitter()`
+
+Return the active global `EventEmitter` instance.
+
+```python
+from llm_diff.schema_events import get_emitter
+
+events = get_emitter().events   # list[Event]
+```
+
+---
+
+### `emit(event)`
+
+Emit an `Event` through the global emitter.  Useful when constructing custom
+events to mix with llm-diff's built-in events.
+
+---
+
+### `EventEmitter`
+
+| Method / Property | Description |
+|-------------------|-------------|
+| `emit(event)` | Validate and emit *event*; call exporter if configured. |
+| `events` | Read-only list of all collected `Event` objects. |
+| `clear()` | Remove all collected events from memory. |
+
+---
+
+### Event factory functions
+
+All factory functions are importable from `llm_diff` or `llm_diff.schema_events`.
+
+| Function | Event type emitted | When |
+|----------|-------------------|------|
+| `make_comparison_started_event(model_a, model_b, prompt)` | `llm.diff.comparison.started` | Before calling models |
+| `make_comparison_completed_event(model_a, model_b, diff_type, ...)` | `llm.diff.comparison.completed` | After diff is computed |
+| `make_report_exported_event(output_path, format, ...)` | `llm.diff.report.exported` | After `save_report()` |
+| `make_trace_span_event(model, prompt_tokens, completion_tokens, latency_ms, ...)` | `llm.trace.span.completed` | After each model API call |
+| `make_cache_event(hit, cache_key, backend, ...)` | `llm.cache.hit` / `llm.cache.miss` | On every cache lookup |
+| `make_cost_recorded_event(input_cost, output_cost, total_cost, ...)` | `llm.cost.recorded` | When `show_cost=True` |
+| `make_eval_scenario_event(evaluator, score, status, ...)` | `llm.eval.scenario.completed` | After LLM-as-a-Judge run |
+
+---
+
+### Schema events example
+
+```python
+import asyncio
+from llm_diff import compare
+from llm_diff.schema_events import configure_emitter, get_emitter
+
+# Opt in: collect events in memory
+configure_emitter()
+
+report = asyncio.run(
+    compare(
+        "Explain closures in JavaScript.",
+        model_a="gpt-4o",
+        model_b="gpt-4o-mini",
+        show_cost=True,
+        judge="gpt-4o-mini",
+    )
+)
+
+for evt in get_emitter().events:
+    print(evt.event_type, evt.event_id)
+# llm.diff.comparison.started  01KJKVRV...
+# llm.trace.span.completed      01KJKVRW...
+# llm.trace.span.completed      01KJKVRX...
+# llm.cost.recorded             01KJKVRY...
+# llm.cost.recorded             01KJKVRZ...
+# llm.eval.scenario.completed   01KJKVS0...
+# llm.diff.comparison.completed 01KJKVS1...
+```
