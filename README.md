@@ -2,12 +2,11 @@
 
 **A CLI tool and Python library for comparing LLM outputs — semantically, visually, and at scale.**
 
-[![PyPI](https://img.shields.io/badge/PyPI-1.2.3-blue?logo=pypi&logoColor=white)](https://pypi.org/project/llm-diff/1.2.3/)
-[![Tests](https://img.shields.io/badge/tests-722%20passed-brightgreen)](https://pypi.org/project/llm-diff/)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://pypi.org/project/llm-diff/)
+[![PyPI](https://img.shields.io/pypi/v/llm-diff?logo=pypi&logoColor=white&label=PyPI)](https://pypi.org/project/llm-diff/)
+[![CI](https://github.com/veerarag1973/llmdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/veerarag1973/llmdiff/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/veerarag1973/llmdiff/branch/main/graph/badge.svg)](https://codecov.io/gh/veerarag1973/llmdiff)
 [![Python](https://img.shields.io/pypi/pyversions/llm-diff)](https://pypi.org/project/llm-diff/)
 [![License](https://img.shields.io/pypi/l/llm-diff)](LICENSE)
-[![Status](https://img.shields.io/badge/status-production--stable-brightgreen)](CHANGELOG.md)
 
 ---
 
@@ -34,7 +33,7 @@ threshold — making it a first-class citizen in CI/CD pipelines.
 Version 1.2 adds LLM-as-a-Judge scoring, per-call USD cost tracking,
 multi-model (3–4 model) comparison, and structured JSON diff.
 
-Version 1.2.3 adds `EVAL_REGRESSION_FAILED` schema event emission — `--fail-under`
+Version 1.3.0 adds `EVAL_REGRESSION_FAILED` schema event emission — `--fail-under`
 gate failures now emit a structured `llm.eval.regression.failed` event (via
 `make_eval_regression_event()`) in addition to returning exit code 1,
 providing a full audit trail for CI regression gates.

@@ -40,8 +40,12 @@ this** — you can see the terminal output, but you cannot:
 every significant operation.  Events are validated, timestamped, carry a unique
 ULID ID, and conform to well-defined payload schemas.
 
-By default the events are built and discarded — **zero overhead, zero config
-needed for users who do not need observability**.  Opt in with one function call.
+By default events are **collected in memory** — every comparison automatically
+appends events to the in-process emitter so you can inspect them at any time.
+Call `configure_emitter(collect=False)` to disable in-memory storage (for
+example, when only streaming to a file exporter).  The CLI disables in-memory
+collection automatically (`collect=False`) to prevent unbounded memory growth
+in long-running batch jobs.
 
 ---
 
@@ -52,10 +56,10 @@ The simplest way to see events is to collect them in memory:
 ```python
 import asyncio
 from llm_diff import compare
-from llm_diff.schema_events import configure_emitter, get_emitter
+from llm_diff.schema_events import get_emitter
 
-# Opt in before any comparisons
-configure_emitter()
+# No setup needed — collection is on by default.
+# Call configure_emitter(collect=False) to turn it off.
 
 asyncio.run(
     compare(
@@ -183,7 +187,7 @@ Each line is a complete JSON event:
 {
   "event_id": "01KJKVRV15TKQWTYZ8A3NRJKJK",
   "event_type": "llm.diff.comparison.started",
-  "source": "llm-diff@1.2.3",
+  "source": "llm-diff@1.3.0",
   "timestamp": "2026-03-01T09:15:00.123456Z",
   "payload": {
     "model_a": "gpt-4o",
@@ -373,12 +377,14 @@ for batch in batches:
 
 | Task | Code |
 |------|------|
-| Opt in (memory) | `configure_emitter()` |
+| Memory collection (on by default) | `get_emitter().events` — no setup required |
+| Limit buffer size (bounded memory) | `configure_emitter(max_events=1000)` |
 | Export to JSONL | `configure_emitter(exporter=JSONLExporter("out.jsonl"))` |
 | Custom exporter | `configure_emitter(exporter=my_fn)` |
 | Read collected events | `get_emitter().events` |
 | Clear events | `get_emitter().clear()` |
-| No memory collection | `configure_emitter(exporter=..., collect=False)` |
+| Disable memory collection | `configure_emitter(collect=False)` |
+| CLI default | collection disabled automatically (`collect=False`) |
 | Filter regression events | `[e for e in get_emitter().events if e.event_type == "llm.eval.regression.failed"]` |
 
 ---

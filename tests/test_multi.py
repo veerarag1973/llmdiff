@@ -6,9 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from llm_diff.diff import DiffResult, DiffType
+from llm_diff.diff import DiffResult
 from llm_diff.multi import MultiModelReport, PairScore
-
 
 # ---------------------------------------------------------------------------
 # PairScore

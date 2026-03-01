@@ -53,6 +53,8 @@ Batch Mode
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -65,6 +67,8 @@ if TYPE_CHECKING:
     from llm_diff.judge import JudgeResult
     from llm_diff.pricing import CostEstimate
     from llm_diff.semantic import ParagraphScore
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +205,8 @@ async def compare(
     try:
         from llm_diff.schema_events import (  # noqa: PLC0415
             emit as schema_emit,
+        )
+        from llm_diff.schema_events import (
             make_comparison_started_event,
         )
 
@@ -212,7 +218,7 @@ async def compare(
         schema_emit(started_evt)
         _started_event_id = started_evt.event_id
     except Exception:  # noqa: BLE001
-        pass
+        logger.debug("Schema event emission failed", exc_info=True)
 
     comparison = await compare_models(
         prompt_a=prompt,
@@ -245,6 +251,8 @@ async def compare(
         try:
             from llm_diff.schema_events import (  # noqa: PLC0415
                 emit as schema_emit,
+            )
+            from llm_diff.schema_events import (
                 make_cost_recorded_event,
             )
 
@@ -257,11 +265,13 @@ async def compare(
                 )
             )
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Schema event emission failed", exc_info=True)
     if cost_b is not None:
         try:
             from llm_diff.schema_events import (  # noqa: PLC0415
                 emit as schema_emit,
+            )
+            from llm_diff.schema_events import (
                 make_cost_recorded_event,
             )
 
@@ -274,7 +284,7 @@ async def compare(
                 )
             )
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Schema event emission failed", exc_info=True)
 
     html_report: str | None = None
     if build_html:
@@ -297,6 +307,8 @@ async def compare(
     try:
         from llm_diff.schema_events import (  # noqa: PLC0415
             emit as schema_emit,
+        )
+        from llm_diff.schema_events import (
             make_comparison_completed_event,
         )
 
@@ -311,7 +323,7 @@ async def compare(
             )
         )
     except Exception:  # noqa: BLE001
-        pass
+        logger.debug("Schema event emission failed", exc_info=True)
 
     return ComparisonReport(
         prompt_a=prompt,
@@ -374,6 +386,8 @@ async def compare_prompts(
     try:
         from llm_diff.schema_events import (  # noqa: PLC0415
             emit as schema_emit,
+        )
+        from llm_diff.schema_events import (
             make_comparison_started_event,
         )
 
@@ -385,7 +399,7 @@ async def compare_prompts(
         schema_emit(started_evt)
         _started_event_id_p = started_evt.event_id
     except Exception:  # noqa: BLE001
-        pass
+        logger.debug("Schema event emission failed", exc_info=True)
 
     comparison = await compare_models(
         prompt_a=prompt_a,
@@ -438,6 +452,8 @@ async def compare_prompts(
     try:
         from llm_diff.schema_events import (  # noqa: PLC0415
             emit as schema_emit,
+        )
+        from llm_diff.schema_events import (
             make_comparison_completed_event,
         )
 
@@ -452,7 +468,7 @@ async def compare_prompts(
             )
         )
     except Exception:  # noqa: BLE001
-        pass
+        logger.debug("Schema event emission failed", exc_info=True)
 
     return ComparisonReport(
         prompt_a=prompt_a,
@@ -486,12 +502,14 @@ async def compare_batch(
     temperature: float | None = None,
     max_tokens: int | None = None,
     timeout: int | None = None,
+    concurrency: int = 4,
 ) -> list[ComparisonReport]:
     """Run a full batch diff from a ``prompts.yml`` file.
 
-    Loads all batch items from the YAML file, runs :func:`compare` for each
-    item sequentially, and returns a list of results in the same order as the
-    YAML file.
+    Loads all batch items from the YAML file and runs :func:`compare` for
+    every item **concurrently**, bounded by *concurrency* simultaneous
+    coroutines.  Results are returned in the same order as the YAML file
+    regardless of completion order.
 
     Parameters
     ----------
@@ -501,6 +519,10 @@ async def compare_batch(
         Model identifier for side A.
     model_b:
         Model identifier for side B.
+    concurrency:
+        Maximum number of :func:`compare` calls that may be in-flight at the
+        same time.  Defaults to ``4``.  Increase for large batches with
+        high-throughput API keys; reduce when rate-limits are tight.
     semantic, paragraph, bleu, rouge, judge, show_cost, build_html, config, temperature, max_tokens, timeout:
         See :func:`compare`.
 
@@ -514,24 +536,25 @@ async def compare_batch(
     cfg = _resolve_config(config, temperature=temperature, max_tokens=max_tokens, timeout=timeout)
     items = load_batch(str(batch_path))
 
-    reports: list[ComparisonReport] = []
-    for item in items:
-        report = await compare(
-            item.prompt_text,
-            model_a=model_a,
-            model_b=model_b,
-            semantic=semantic,
-            paragraph=paragraph,
-            bleu=bleu,
-            rouge=rouge,
-            judge=judge,
-            show_cost=show_cost,
-            build_html=build_html,
-            config=cfg,
-        )
-        reports.append(report)
+    sem = asyncio.Semaphore(concurrency)
 
-    return reports
+    async def _run_one(batch_item: object) -> ComparisonReport:
+        async with sem:
+            return await compare(
+                batch_item.prompt_text,  # type: ignore[attr-defined]
+                model_a=model_a,
+                model_b=model_b,
+                semantic=semantic,
+                paragraph=paragraph,
+                bleu=bleu,
+                rouge=rouge,
+                judge=judge,
+                show_cost=show_cost,
+                build_html=build_html,
+                config=cfg,
+            )
+
+    return list(await asyncio.gather(*(_run_one(item) for item in items)))
 
 
 # ---------------------------------------------------------------------------

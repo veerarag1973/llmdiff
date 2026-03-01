@@ -114,11 +114,11 @@ async def compare_prompts(
 
 ### `compare_batch()`
 
-Run a full batch from a YAML file.
+Run a full batch from a YAML file concurrently.
 
 ```python
 async def compare_batch(
-    batch_file: str | Path,
+    batch_path: str | Path,
     *,
     model_a: str,
     model_b: str,
@@ -126,24 +126,25 @@ async def compare_batch(
     paragraph: bool = False,
     bleu: bool = False,
     rouge: bool = False,
-    temperature: float = 0.7,
-    max_tokens: int = 1024,
-    timeout: int = 30,
-    no_cache: bool = False,
-    concurrency: int = 4,
     judge: str | None = None,
     show_cost: bool = False,
     build_html: bool = False,
+    config: LLMDiffConfig | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    timeout: int | None = None,
+    concurrency: int = 4,
 ) -> list[ComparisonReport]: ...
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `batch_file` | `str \| Path` | — | Path to a `prompts.yml` file. |
-| `concurrency` | `int` | `4` | Max parallel API calls. |
+| `batch_path` | `str \| Path` | — | Path to a `prompts.yml` file. |
+| `config` | `LLMDiffConfig \| None` | `None` | Shared run config; overrides individual fields when set. |
+| `concurrency` | `int` | `4` | Maximum number of concurrent `compare()` calls. Increase for large batches; reduce when rate-limits are tight. |
 | All others | — | — | Same as `compare()`. |
 
-**Returns** `list[ComparisonReport]` — one entry per batch item.
+**Returns** `list[ComparisonReport]` — one entry per batch item, in YAML order.
 
 ---
 

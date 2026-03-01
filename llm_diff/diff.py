@@ -214,7 +214,7 @@ def compute_similarity(text_a: str, text_b: str) -> float:
 # ---------------------------------------------------------------------------
 
 import json as _json  # noqa: E402  — stdlib, safe to import here
-from enum import Enum as _Enum
+from enum import Enum as _Enum  # noqa: E402
 
 
 class JsonChangeType(str, _Enum):

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from llm_diff.pricing import CostEstimate, PRICING, estimate_cost, format_cost_table
-
+from llm_diff.pricing import PRICING, CostEstimate, estimate_cost, format_cost_table
 
 # ---------------------------------------------------------------------------
 # estimate_cost — known models

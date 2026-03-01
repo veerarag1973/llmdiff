@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "1.2.3"
+__version__ = "1.3.0"
 
 from llm_diff.api import ComparisonReport, compare, compare_batch, compare_prompts
 from llm_diff.diff import JsonStructDiffResult, json_struct_diff

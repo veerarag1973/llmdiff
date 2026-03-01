@@ -180,7 +180,7 @@ def _configure_logging(verbose: bool) -> None:
 )
 @click.option(
     "--concurrency",
-    default=4, type=int, metavar="INT",
+    default=4, type=click.IntRange(min=1), metavar="INT",
     help="Max concurrent API calls in batch mode (default: 4).",
 )
 @click.option(
@@ -232,6 +232,12 @@ def main(  # noqa: PLR0913 — many CLI parameters is unavoidable
     """
     _configure_logging(verbose)
     console = Console(no_color=no_color, stderr=False)
+
+    # Configure schema event emitter — disable in-memory collection to avoid
+    # unbounded memory growth in long-running CLI/batch operations (SEC-02).
+    from llm_diff.schema_events import configure_emitter  # noqa: PLC0415
+
+    configure_emitter(collect=False)
 
     # ── Load configuration ───────────────────────────────────────────────────
     cfg = load_config()
@@ -602,6 +608,8 @@ async def _run_batch(
             )
             from llm_diff.schema_events import (  # noqa: PLC0415
                 emit as schema_emit,
+            )
+            from llm_diff.schema_events import (
                 make_eval_regression_event,
             )
 
@@ -811,6 +819,8 @@ async def _run_diff(
             )
             from llm_diff.schema_events import (  # noqa: PLC0415
                 emit as schema_emit,
+            )
+            from llm_diff.schema_events import (
                 make_eval_regression_event,
             )
 
@@ -930,8 +940,9 @@ async def _run_multi(
     cache: object | None,
 ) -> None:
     """Run *prompt* against all *models* and render a pairwise similarity matrix."""
-    from llm_diff.multi import run_multi_model  # noqa: PLC0415
     from rich.table import Table  # noqa: PLC0415
+
+    from llm_diff.multi import run_multi_model  # noqa: PLC0415
 
     n = len(models)
     console.print(

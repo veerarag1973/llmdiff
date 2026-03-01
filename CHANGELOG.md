@@ -11,7 +11,65 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [1.2.3] — 2026-03-01
+## [1.3.0] — 2026-03-01
+
+### Added
+
+- **`compare_batch()` — concurrent execution** (PERF-01): replaced the
+  sequential `for` loop with `asyncio.Semaphore` + `asyncio.gather`.  A new
+  `concurrency: int = 4` parameter caps the number of simultaneous `compare()`
+  calls, keeping rate-limit headroom while providing a large batch throughput
+  improvement.
+- **`EventEmitter` ring-buffer** (PERF-02): the internal event list is now a
+  `collections.deque`.  `configure_emitter()` gains a `max_events: int | None`
+  parameter; when set, the oldest events are automatically evicted, bounding
+  memory to a fixed window.
+- **`ResultCache` plaintext-data warnings** (SEC-01 mitigation): three-layer
+  documentation added — module `.. warning::` block (names HIPAA/GDPR, gives
+  the escape hatch), `ResultCache` class docstring warning, and a runtime
+  `logger.warning()` emitted every time a cache instance is created with
+  `enabled=True`.  The `put()` docstring also carries a write-site caution.
+
+### Changed
+
+- **CLI memory safety** (SEC-02): `llm_diff/cli.py` now calls
+  `configure_emitter(collect=False)` at startup, preventing unbounded in-memory
+  event accumulation during long-running batch jobs.  Library users retain the
+  new default of `collect=True` (events collected in memory automatically).
+- **`--concurrency` input validation** (PERF-03): the CLI option now uses
+  `click.IntRange(min=1)` instead of plain `int`, so `--concurrency 0` (or
+  negative values) abort early with a clear error message.
+- **Provider URL localhost detection** (SEC-03): `_validate_provider()` now
+  parses the URL with `urllib.parse.urlparse().hostname` instead of a
+  substring check, eliminating false-positive bypasses such as
+  `https://notlocalhost.example.com/`.
+- **Schema event collection default corrected** (HAL-01): the `schema_events`
+  module docstring previously claimed events were "built and discarded by
+  default (sink mode)" — the actual default is `collect=True` (events kept in
+  memory).  The module docstring, `docs/tutorials/11-schema-events.md`, and
+  `docs/schema-events.md` have all been updated to reflect the true behaviour.
+- **`compare_batch()` docstring**: removed the incorrect "sequentially" claim;
+  now accurately describes the concurrent execution model and documents the
+  `concurrency` parameter.
+
+### Fixed
+
+- **Bare `except: pass` silencers removed** (CS-02): nine instances across
+  `api.py`, `cache.py`, `judge.py`, `providers.py`, and `report.py` replaced
+  with `logger.debug("…", exc_info=True)`.  Schema-event emission failures
+  and cache errors are now visible in debug logs instead of being silently
+  swallowed.
+- **30 ruff auto-fixes applied** (CS-01): unused imports, missing blank lines,
+  and style issues caught by `ruff --fix`.
+- **Example type annotations** (CS-03): `examples/inputs/func.py` annotated
+  with `list[float]` input and `float` return types to satisfy `ANN` rules in
+  non-example files.
+- **`api.md` `compare_batch()` signature** corrected: `batch_file` →
+  `batch_path`, `no_cache: bool` removed, `config: LLMDiffConfig | None`
+  added, `temperature`/`max_tokens`/`timeout` default types updated to
+  `… | None` to match the real function signature.
+
+---
 
 ## [1.2.2] — 2026-03-01
 

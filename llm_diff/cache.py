@@ -26,6 +26,17 @@ Programmatic use::
     if cached is None:
         response = await _call_model(...)
         cache.put(key, response)
+
+.. warning:: **Data-exposure risk — plaintext storage**
+
+    Cache entries are written as unencrypted JSON files under
+    ``~/.cache/llm-diff/``.  Each file contains the full model response text,
+    the prompt, token counts, and latency metadata.  If your prompts or
+    responses contain **sensitive, confidential, or personally-identifiable
+    information**, pass ``--no-cache`` (CLI) or ``ResultCache(enabled=False)``
+    (API) to disable persistence entirely.  There is currently no
+    encryption-at-rest option; do not enable the cache in environments that
+    handle regulated data (HIPAA, GDPR, etc.) without additional controls.
 """
 
 from __future__ import annotations
@@ -45,6 +56,12 @@ logger = logging.getLogger(__name__)
 
 class ResultCache:
     """Disk-backed LLM response cache.
+
+    .. warning::
+        Cache entries are stored as **unencrypted plaintext JSON** on disk.
+        Do not enable the cache when prompts or responses may contain
+        sensitive data.  Use ``--no-cache`` at the CLI or pass
+        ``enabled=False`` programmatically.
 
     Parameters
     ----------
@@ -67,6 +84,13 @@ class ResultCache:
             cache_dir if cache_dir is not None else Path.home() / ".cache" / "llm-diff"
         )
         self._enabled: bool = enabled
+        if self._enabled:
+            logger.warning(
+                "Response cache is ENABLED — model responses are stored as unencrypted "
+                "plaintext JSON under %s. Use --no-cache or ResultCache(enabled=False) "
+                "when handling sensitive prompts or responses.",
+                self._dir,
+            )
 
     # ------------------------------------------------------------------
     # Properties
@@ -148,7 +172,8 @@ class ResultCache:
         if not path.is_file():
             # Emit cache miss event
             try:
-                from llm_diff.schema_events import emit as schema_emit, make_cache_event  # noqa: PLC0415
+                from llm_diff.schema_events import emit as schema_emit  # noqa: PLC0415
+                from llm_diff.schema_events import make_cache_event
 
                 schema_emit(
                     make_cache_event(
@@ -158,7 +183,7 @@ class ResultCache:
                     )
                 )
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Schema event emission failed", exc_info=True)
             return None
 
         try:
@@ -169,7 +194,8 @@ class ResultCache:
 
             # Emit cache hit event
             try:
-                from llm_diff.schema_events import emit as schema_emit, make_cache_event  # noqa: PLC0415
+                from llm_diff.schema_events import emit as schema_emit  # noqa: PLC0415
+                from llm_diff.schema_events import make_cache_event
 
                 schema_emit(
                     make_cache_event(
@@ -179,7 +205,7 @@ class ResultCache:
                     )
                 )
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Schema event emission failed", exc_info=True)
 
             return cached_response
         except Exception:  # noqa: BLE001
@@ -194,6 +220,10 @@ class ResultCache:
         """Serialise *response* to disk under *key*.
 
         Silently does nothing when the cache is disabled.
+
+        .. warning::
+            The entry is written as **unencrypted plaintext JSON**.  Do not
+            cache responses that contain sensitive or regulated data.
 
         Parameters
         ----------

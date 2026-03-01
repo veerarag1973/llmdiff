@@ -9,8 +9,10 @@ schema-validated :class:`~llm_toolkit_schema.Event`.
 Architecture
 ------------
 A module-level :class:`EventEmitter` singleton collects events.  By default
-it operates in *sink* mode (events are built and validated but discarded).
-Call :func:`configure_emitter` once at startup to attach an exporter, e.g.::
+events are kept in memory (see :attr:`~EventEmitter.events`).  In
+long-running processes call :func:`configure_emitter` with
+``collect=False`` (or a finite ``max_events``) to bound memory use.
+Attach an exporter, e.g.::
 
     from llm_diff.schema_events import configure_emitter
     from llm_toolkit_schema.export.jsonl import JSONLExporter
@@ -39,6 +41,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import uuid
+from collections import deque
 from typing import TYPE_CHECKING, Any, Callable
 
 from llm_diff import __version__
@@ -49,7 +52,7 @@ logger = logging.getLogger(__name__)
 _SOURCE = f"llm-diff@{__version__}"
 
 if TYPE_CHECKING:
-    from llm_toolkit_schema import Event
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +133,10 @@ class EventEmitter:
         When ``True`` (default), events are appended to the in-memory
         :attr:`events` list.  Disable when memory overhead matters in
         long-running processes.
+    max_events:
+        Maximum number of events to keep in memory.  When the buffer is full
+        the oldest event is silently dropped (ring-buffer semantics).  ``None``
+        (default) means unbounded.
     """
 
     def __init__(
@@ -137,10 +144,13 @@ class EventEmitter:
         exporter: Callable[[Any], Any] | None = None,
         *,
         collect: bool = True,
+        max_events: int | None = None,
     ) -> None:
         self._exporter = exporter
         self._collect = collect
-        self._events: list[Any] = []
+        # Bounded ring-buffer: deque(maxlen=N) automatically discards the
+        # oldest entry once the capacity is reached (PERF-02).
+        self._events: deque[Any] = deque(maxlen=max_events)
 
     @property
     def events(self) -> list[Any]:
@@ -206,6 +216,7 @@ def configure_emitter(
     exporter: Callable[[Any], Any] | None = None,
     *,
     collect: bool = True,
+    max_events: int | None = None,
 ) -> EventEmitter:
     """Replace the global emitter with a new configured instance.
 
@@ -219,6 +230,9 @@ def configure_emitter(
         :class:`~llm_toolkit_schema.Event`.
     collect:
         Whether to keep events in memory (default ``True``).
+    max_events:
+        Maximum number of events to retain in memory (ring-buffer).
+        ``None`` (default) means unbounded.
 
     Returns
     -------
@@ -227,7 +241,7 @@ def configure_emitter(
     """
     global _emitter  # noqa: PLW0603
 
-    _emitter = EventEmitter(exporter=exporter, collect=collect)
+    _emitter = EventEmitter(exporter=exporter, collect=collect, max_events=max_events)
     return _emitter
 
 
@@ -594,7 +608,7 @@ def make_eval_scenario_event(
 
     metrics: dict[str, float] | None = None
     if score is not None and criteria:
-        metrics = {c: score for c in criteria}
+        metrics = dict.fromkeys(criteria, score)
     elif score is not None:
         metrics = {"score": score}
 

@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 from llm_diff.diff import (
     JsonChangeType,
-    JsonDiffEntry,
-    JsonStructDiffResult,
     _flatten_json,
     detect_json,
     json_struct_diff,
 )
-
 
 # ---------------------------------------------------------------------------
 # _flatten_json

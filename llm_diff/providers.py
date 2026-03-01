@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import urllib.parse
 from dataclasses import dataclass
 
 import openai
@@ -160,6 +161,8 @@ async def _call_model(
             try:
                 from llm_diff.schema_events import (  # noqa: PLC0415
                     emit as schema_emit,
+                )
+                from llm_diff.schema_events import (
                     make_trace_span_event,
                 )
 
@@ -180,7 +183,7 @@ async def _call_model(
                     )
                 )
             except Exception:  # noqa: BLE001
-                pass  # schema events are best-effort
+                logger.debug("Schema event emission failed", exc_info=True)
 
             return response_obj
 
@@ -358,7 +361,8 @@ def _validate_provider(
 
     # Local / custom endpoints (e.g. Ollama) often require no key.
     needs_key = provider_name != "custom" or (
-        provider_cfg.base_url is None or "localhost" not in provider_cfg.base_url
+        provider_cfg.base_url is None
+        or urllib.parse.urlparse(provider_cfg.base_url).hostname != "localhost"
     )
 
     if needs_key and not provider_cfg.api_key:

@@ -3,8 +3,9 @@
 `llm-diff` integrates with
 [llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/) to emit a
 structured, validated event for every significant pipeline operation.  Events
-can be collected in memory, exported to JSONL, forwarded to a custom backend,
-or simply ignored (the default).
+are **collected in memory by default** and can also be exported to JSONL,
+forwarded to a custom backend, or have in-memory collection disabled via
+`configure_emitter(collect=False)`.
 
 ---
 
@@ -25,7 +26,8 @@ import asyncio
 from llm_diff import compare
 from llm_diff.schema_events import configure_emitter, get_emitter
 
-# Opt in: keep events in memory
+# Events are collected in memory by default — read them via get_emitter().events.
+# Call configure_emitter(collect=False) to disable in-memory storage.
 configure_emitter()
 
 asyncio.run(
@@ -69,7 +71,7 @@ Each line of the output file is a complete JSON object.  Example:
 {
   "event_id": "01KJKVRV15TKQWTYZ8A3NRJKJK",
   "event_type": "llm.diff.comparison.started",
-  "source": "llm-diff@1.2.3",
+  "source": "llm-diff@1.3.0",
   "timestamp": "2026-03-01T09:15:00.123456Z",
   "payload": {
     "model_a": "gpt-4o",

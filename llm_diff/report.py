@@ -223,6 +223,8 @@ def save_report(html: str, path: Path) -> Path:
     try:
         from llm_diff.schema_events import (  # noqa: PLC0415
             emit as schema_emit,
+        )
+        from llm_diff.schema_events import (
             make_report_exported_event,
         )
 
@@ -233,7 +235,7 @@ def save_report(html: str, path: Path) -> Path:
             )
         )
     except Exception:  # noqa: BLE001
-        pass
+        logger.debug("Schema event emission failed", exc_info=True)
 
     return path
 

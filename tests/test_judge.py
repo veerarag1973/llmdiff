@@ -8,7 +8,6 @@ import pytest
 
 from llm_diff.judge import JudgeResult, _normalise_winner, _parse_judge_response
 
-
 # ---------------------------------------------------------------------------
 # _normalise_winner
 # ---------------------------------------------------------------------------

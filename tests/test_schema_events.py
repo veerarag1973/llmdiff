@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import dataclasses
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -21,7 +20,6 @@ from llm_diff.schema_events import (
     make_report_exported_event,
     make_trace_span_event,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

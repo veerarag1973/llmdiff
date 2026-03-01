@@ -302,7 +302,8 @@ async def run_judge(
 
     # Emit schema event for the evaluation
     try:
-        from llm_diff.schema_events import make_eval_scenario_event, emit as schema_emit  # noqa: PLC0415
+        from llm_diff.schema_events import emit as schema_emit
+        from llm_diff.schema_events import make_eval_scenario_event  # noqa: PLC0415
 
         schema_emit(
             make_eval_scenario_event(
@@ -316,6 +317,6 @@ async def run_judge(
             )
         )
     except Exception:  # noqa: BLE001
-        pass  # schema events are best-effort
+        logger.debug("Schema event emission failed", exc_info=True)
 
     return result
