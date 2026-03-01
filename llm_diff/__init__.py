@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 
 from llm_diff.api import ComparisonReport, compare, compare_batch, compare_prompts
 from llm_diff.diff import JsonStructDiffResult, json_struct_diff
@@ -18,6 +18,7 @@ from llm_diff.schema_events import (
     make_comparison_completed_event,
     make_comparison_started_event,
     make_cost_recorded_event,
+    make_eval_regression_event,
     make_eval_scenario_event,
     make_report_exported_event,
     make_trace_span_event,
@@ -45,6 +46,7 @@ __all__ = [
     "make_comparison_completed_event",
     "make_comparison_started_event",
     "make_cost_recorded_event",
+    "make_eval_regression_event",
     "make_eval_scenario_event",
     "make_report_exported_event",
     "make_trace_span_event",

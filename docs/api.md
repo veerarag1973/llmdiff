@@ -566,6 +566,7 @@ All factory functions are importable from `llm_diff` or `llm_diff.schema_events`
 | `make_cache_event(hit, cache_key, backend, ...)` | `llm.cache.hit` / `llm.cache.miss` | On every cache lookup |
 | `make_cost_recorded_event(input_cost, output_cost, total_cost, ...)` | `llm.cost.recorded` | When `show_cost=True` |
 | `make_eval_scenario_event(evaluator, score, status, ...)` | `llm.eval.scenario.completed` | After LLM-as-a-Judge run |
+| `make_eval_regression_event(scenario_name, current_score, baseline_score, threshold, ...)` | `llm.eval.regression.failed` | When `--fail-under` threshold is not met |
 
 ---
 

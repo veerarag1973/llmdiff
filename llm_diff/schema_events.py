@@ -620,3 +620,55 @@ def make_eval_scenario_event(
     return _make_event(
         ET.EVAL_SCENARIO_COMPLETED, payload, session_id=session_id, org_id=org_id
     )
+
+
+def make_eval_regression_event(
+    *,
+    scenario_name: str,
+    current_score: float,
+    baseline_score: float,
+    threshold: float,
+    metrics: dict[str, float] | None = None,
+    session_id: str | None = None,
+    org_id: str | None = None,
+) -> Any:
+    """Build a ``llm.eval.regression.failed`` event with EvalRegressionPayload.
+
+    Emitted when the ``--fail-under`` threshold is not met, indicating that
+    the primary similarity/semantic score has regressed below the minimum
+    acceptable level.
+
+    Parameters
+    ----------
+    scenario_name:
+        Human-readable name for the scenario that triggered the regression,
+        e.g. ``"llm-diff/fail-under/batch"`` or ``"llm-diff/fail-under/single"``.
+    current_score:
+        The actual similarity or semantic score that was measured.
+    baseline_score:
+        The minimum acceptable score (i.e. the ``--fail-under`` value).
+    threshold:
+        The ``--fail-under`` threshold value (same as *baseline_score* here).
+    metrics:
+        Optional mapping of metric names to values for richer diagnostics.
+    session_id:
+        Optional session identifier for correlation.
+    org_id:
+        Optional organisation identifier.
+    """
+    ET = _event_type()
+    ns = _eval_ns()
+
+    payload_obj = ns.EvalRegressionPayload(
+        scenario_id=_ulid_or_empty(),
+        scenario_name=scenario_name,
+        current_score=current_score,
+        baseline_score=baseline_score,
+        regression_delta=baseline_score - current_score,
+        threshold=threshold,
+        metrics=metrics,
+    )
+    payload = dataclasses.asdict(payload_obj)
+    return _make_event(
+        ET.EVAL_REGRESSION_FAILED, payload, session_id=session_id, org_id=org_id
+    )

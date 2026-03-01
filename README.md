@@ -2,8 +2,8 @@
 
 **A CLI tool and Python library for comparing LLM outputs — semantically, visually, and at scale.**
 
-[![PyPI](https://img.shields.io/badge/PyPI-1.2.2-blue?logo=pypi&logoColor=white)](https://pypi.org/project/llm-diff/1.2.2/)
-[![Tests](https://img.shields.io/badge/tests-715%20passed-brightgreen)](https://pypi.org/project/llm-diff/)
+[![PyPI](https://img.shields.io/badge/PyPI-1.2.3-blue?logo=pypi&logoColor=white)](https://pypi.org/project/llm-diff/1.2.3/)
+[![Tests](https://img.shields.io/badge/tests-722%20passed-brightgreen)](https://pypi.org/project/llm-diff/)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://pypi.org/project/llm-diff/)
 [![Python](https://img.shields.io/pypi/pyversions/llm-diff)](https://pypi.org/project/llm-diff/)
 [![License](https://img.shields.io/pypi/l/llm-diff)](LICENSE)
@@ -34,10 +34,16 @@ threshold — making it a first-class citizen in CI/CD pipelines.
 Version 1.2 adds LLM-as-a-Judge scoring, per-call USD cost tracking,
 multi-model (3–4 model) comparison, and structured JSON diff.
 
+Version 1.2.3 adds `EVAL_REGRESSION_FAILED` schema event emission — `--fail-under`
+gate failures now emit a structured `llm.eval.regression.failed` event (via
+`make_eval_regression_event()`) in addition to returning exit code 1,
+providing a full audit trail for CI regression gates.
+
 Version 1.2.2 integrates [llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/)
 as a built-in observability layer: every comparison, model call, cache lookup,
-cost record, and judge evaluation now emits a validated schema event that can be
-collected in memory, exported to JSONL, or forwarded to any custom backend.
+cost record, judge evaluation, and `--fail-under` regression failure now emits a
+validated schema event that can be collected in memory, exported to JSONL, or
+forwarded to any custom backend.
 
 ## Documentation
 

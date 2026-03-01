@@ -69,7 +69,7 @@ Each line of the output file is a complete JSON object.  Example:
 {
   "event_id": "01KJKVRV15TKQWTYZ8A3NRJKJK",
   "event_type": "llm.diff.comparison.started",
-  "source": "llm-diff@1.2.2",
+  "source": "llm-diff@1.2.3",
   "timestamp": "2026-03-01T09:15:00.123456Z",
   "payload": {
     "model_a": "gpt-4o",
@@ -244,6 +244,43 @@ Emitted after an LLM-as-a-Judge run finishes.
 | `label` | `str \| None` | Winner (`"A"`, `"B"`, `"tie"`) |
 | `baseline_score` | `float \| None` | Not set by default |
 | `duration_ms` | `float \| None` | Judge call latency |
+
+---
+
+### `llm.eval.regression.failed`
+
+Emitted when the `--fail-under` threshold is not met.  One event is emitted per
+failing item in batch mode; one event in single-comparison mode.
+
+**Payload** — conforms to `EvalRegressionPayload`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scenario_id` | `str` | Auto-generated ULID |
+| `scenario_name` | `str` | `"llm-diff/fail-under/single"` or `"llm-diff/fail-under/batch"` |
+| `current_score` | `float` | Measured similarity or semantic score |
+| `baseline_score` | `float` | The `--fail-under` value (minimum required) |
+| `regression_delta` | `float` | `baseline_score − current_score` (positive = shortfall) |
+| `threshold` | `float` | Same as `baseline_score` |
+| `metrics` | `dict \| None` | `{"similarity": word_similarity}` when semantic score is the primary |
+
+**Example**
+
+```python
+from llm_diff.schema_events import configure_emitter, get_emitter
+
+configure_emitter()
+
+# Run a CLI comparison that fails --fail-under threshold (programmatically)
+# ... or inspect events after any batch run with --fail-under
+regression_events = [
+    e for e in get_emitter().events
+    if e.event_type == "llm.eval.regression.failed"
+]
+for evt in regression_events:
+    p = evt.payload
+    print(f"REGRESSION  score={p['current_score']:.4f}  threshold={p['threshold']:.2f}  delta={p['regression_delta']:.4f}")
+```
 
 ---
 

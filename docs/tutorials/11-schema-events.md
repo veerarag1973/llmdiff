@@ -18,6 +18,7 @@ By the end of this tutorial you will be able to:
 - Forward events to any custom backend
 - Correlate related events using the event envelope
 - Build a simple audit log for an evaluation pipeline
+- Capture `--fail-under` regression failures as structured events
 
 ---
 
@@ -182,7 +183,7 @@ Each line is a complete JSON event:
 {
   "event_id": "01KJKVRV15TKQWTYZ8A3NRJKJK",
   "event_type": "llm.diff.comparison.started",
-  "source": "llm-diff@1.2.2",
+  "source": "llm-diff@1.2.3",
   "timestamp": "2026-03-01T09:15:00.123456Z",
   "payload": {
     "model_a": "gpt-4o",
@@ -304,7 +305,52 @@ if __name__ == "__main__":
 
 ---
 
-## Step 8 — Memory management in long-running processes
+## Step 8 — Observe `--fail-under` regression events
+
+When a batch or single comparison fails the `--fail-under` threshold, llm-diff
+emits an `llm.eval.regression.failed` event in addition to writing to stderr and
+exiting with code 1.  You can intercept it before that exit (or replay from a
+JSONL file) to build custom alerting:
+
+```python
+from llm_diff.schema_events import configure_emitter, get_emitter
+from llm_toolkit_schema.export.jsonl import JSONLExporter
+
+configure_emitter(exporter=JSONLExporter("events.jsonl"))
+
+# ... run your batch comparison ...
+
+regression_events = [
+    e for e in get_emitter().events
+    if e.event_type == "llm.eval.regression.failed"
+]
+
+if regression_events:
+    print(f"{len(regression_events)} regression(s) detected:")
+    for evt in regression_events:
+        p = evt.payload
+        print(
+            f"  {p['scenario_name']}  "
+            f"score={p['current_score']:.4f}  "
+            f"threshold={p['threshold']:.2f}  "
+            f"delta={p['regression_delta']:.4f}"
+        )
+```
+
+The `EvalRegressionPayload` fields are:
+
+| Field | Description |
+|-------|-------------|
+| `scenario_name` | `"llm-diff/fail-under/single"` or `"llm-diff/fail-under/batch"` |
+| `current_score` | Measured similarity / semantic score |
+| `baseline_score` | The `--fail-under` value |
+| `regression_delta` | `baseline − current` (how far below threshold) |
+| `threshold` | Same as `baseline_score` |
+| `metrics` | `{"similarity": …}` when semantic score was the primary metric |
+
+---
+
+## Step 9 — Memory management in long-running processes
 
 In a long-running application or repeated batch job, events accumulate:
 
@@ -333,6 +379,7 @@ for batch in batches:
 | Read collected events | `get_emitter().events` |
 | Clear events | `get_emitter().clear()` |
 | No memory collection | `configure_emitter(exporter=..., collect=False)` |
+| Filter regression events | `[e for e in get_emitter().events if e.event_type == "llm.eval.regression.failed"]` |
 
 ---
 

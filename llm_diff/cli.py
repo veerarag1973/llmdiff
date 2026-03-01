@@ -600,6 +600,28 @@ async def _run_batch(
                 f"[bold red]--fail-under {fail_under:.2f}: "
                 f"{len(failing)}/{len(batch_results)} item(s) below threshold.[/bold red]"
             )
+            from llm_diff.schema_events import (  # noqa: PLC0415
+                emit as schema_emit,
+                make_eval_regression_event,
+            )
+
+            for _r in failing:
+                _score = (
+                    _r.semantic_score
+                    if _r.semantic_score is not None
+                    else _r.diff_result.similarity
+                )
+                schema_emit(
+                    make_eval_regression_event(
+                        scenario_name="llm-diff/fail-under/batch",
+                        current_score=_score,
+                        baseline_score=float(fail_under),
+                        threshold=float(fail_under),
+                        metrics={"similarity": _r.diff_result.similarity}
+                        if _r.semantic_score is not None
+                        else None,
+                    )
+                )
             sys.exit(1)
 
     if out:
@@ -786,6 +808,22 @@ async def _run_diff(
             err_console.print(
                 f"[bold red]--fail-under {fail_under:.2f}: "
                 f"score {primary:.4f} is below threshold.[/bold red]"
+            )
+            from llm_diff.schema_events import (  # noqa: PLC0415
+                emit as schema_emit,
+                make_eval_regression_event,
+            )
+
+            schema_emit(
+                make_eval_regression_event(
+                    scenario_name="llm-diff/fail-under/single",
+                    current_score=float(primary),
+                    baseline_score=float(fail_under),
+                    threshold=float(fail_under),
+                    metrics={"similarity": float(diff_result.similarity)}
+                    if semantic_score is not None
+                    else None,
+                )
             )
             sys.exit(1)
 

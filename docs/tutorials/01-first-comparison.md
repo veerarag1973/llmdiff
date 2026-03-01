@@ -32,7 +32,7 @@ Verify the install:
 
 ```bash
 llm-diff --version
-# llm-diff, version 1.2.2
+# llm-diff, version 1.2.3
 ```
 
 ---

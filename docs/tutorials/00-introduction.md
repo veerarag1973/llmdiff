@@ -246,8 +246,9 @@ llm-diff 'Return JSON: {"name": "...", "age": ...}' \
 
 ### Schema events & observability
 
-Every comparison, model call, cache lookup, cost estimate, and judge evaluation
-automatically emits a structured [llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/)
+Every comparison, model call, cache lookup, cost estimate, judge evaluation, and
+`--fail-under` regression failure automatically emits a structured
+[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/)
 event.  Attach any exporter to ship events to JSONL, a database, or a custom
 observability backend with one line of configuration:
 

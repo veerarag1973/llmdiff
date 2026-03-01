@@ -16,6 +16,7 @@ from llm_diff.schema_events import (
     make_comparison_completed_event,
     make_comparison_started_event,
     make_cost_recorded_event,
+    make_eval_regression_event,
     make_eval_scenario_event,
     make_report_exported_event,
     make_trace_span_event,
@@ -726,3 +727,83 @@ class TestCacheSchemaIntegration:
 
         cache_events = [e for e in emitter.events if "cache" in e.event_type]
         assert len(cache_events) == 0
+
+
+# ---------------------------------------------------------------------------
+# make_eval_regression_event
+# ---------------------------------------------------------------------------
+
+
+class TestMakeEvalRegressionEvent:
+    def test_event_type(self) -> None:
+        evt = make_eval_regression_event(
+            scenario_name="llm-diff/fail-under/single",
+            current_score=0.6,
+            baseline_score=0.8,
+            threshold=0.8,
+        )
+        assert evt.event_type == "llm.eval.regression.failed"
+
+    def test_payload_fields(self) -> None:
+        evt = make_eval_regression_event(
+            scenario_name="llm-diff/fail-under/single",
+            current_score=0.55,
+            baseline_score=0.80,
+            threshold=0.80,
+            metrics={"similarity": 0.55},
+        )
+        assert evt.payload["scenario_name"] == "llm-diff/fail-under/single"
+        assert evt.payload["current_score"] == pytest.approx(0.55)
+        assert evt.payload["baseline_score"] == pytest.approx(0.80)
+        assert evt.payload["threshold"] == pytest.approx(0.80)
+        assert evt.payload["regression_delta"] == pytest.approx(0.25)
+        assert evt.payload["metrics"] == {"similarity": pytest.approx(0.55)}
+
+    def test_regression_delta_computed(self) -> None:
+        evt = make_eval_regression_event(
+            scenario_name="llm-diff/fail-under/batch",
+            current_score=0.70,
+            baseline_score=0.90,
+            threshold=0.90,
+        )
+        # regression_delta = baseline - current = 0.20
+        assert evt.payload["regression_delta"] == pytest.approx(0.20)
+
+    def test_metrics_optional(self) -> None:
+        evt = make_eval_regression_event(
+            scenario_name="llm-diff/fail-under/single",
+            current_score=0.4,
+            baseline_score=0.5,
+            threshold=0.5,
+        )
+        assert evt.payload["metrics"] is None
+
+    def test_scenario_id_generated(self) -> None:
+        evt = make_eval_regression_event(
+            scenario_name="llm-diff/fail-under/single",
+            current_score=0.3,
+            baseline_score=0.7,
+            threshold=0.7,
+        )
+        assert isinstance(evt.payload["scenario_id"], str)
+        assert len(evt.payload["scenario_id"]) > 0
+
+    def test_event_validates(self) -> None:
+        make_eval_regression_event(
+            scenario_name="llm-diff/fail-under/single",
+            current_score=0.60,
+            baseline_score=0.75,
+            threshold=0.75,
+        ).validate()
+
+    def test_optional_session_and_org(self) -> None:
+        evt = make_eval_regression_event(
+            scenario_name="llm-diff/fail-under/single",
+            current_score=0.5,
+            baseline_score=0.9,
+            threshold=0.9,
+            session_id="sess-abc",
+            org_id="org-xyz",
+        )
+        assert evt.session_id == "sess-abc"
+        assert evt.org_id == "org-xyz"
