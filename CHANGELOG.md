@@ -11,6 +11,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.3.1] — 2026-03-06
+
+### Changed
+
+- Migrated observability integration from `llm-toolkit-schema` to
+  `agentobs>=1.0.5` across the codebase.
+- Updated schema event factory implementations to align with AgentOBS event
+  types and namespace payload shapes.
+- Updated docs and tutorials to use AgentOBS imports, event names, and payload
+  fields.
+- Removed `llm-toolkit-schema` from the project virtual environment.
+
+---
+
 ## [1.3.0] — 2026-03-01
 
 ### Added

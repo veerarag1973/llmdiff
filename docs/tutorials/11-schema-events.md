@@ -187,7 +187,7 @@ Each line is a complete JSON event:
 {
   "event_id": "01KJKVRV15TKQWTYZ8A3NRJKJK",
   "event_type": "x.llm-diff.comparison.started",
-  "source": "llm-diff@1.3.0",
+    "source": "llm-diff@1.3.1",
   "timestamp": "2026-03-01T09:15:00.123456Z",
   "payload": {
     "model_a": "gpt-4o",
