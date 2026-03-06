@@ -162,7 +162,7 @@ class CostEstimate:
         """Return a dict conforming to the ``llm.cost.*`` namespace payload.
 
         Compatible with
-        :class:`~llm_toolkit_schema.namespaces.cost.CostPayload` field names.
+        :class:`~agentobs.namespaces.cost.CostTokenRecordedPayload` field names.
         """
         return {
             "input_cost": round(self.prompt_usd, 6),

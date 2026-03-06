@@ -66,7 +66,7 @@ class DiffResult:
 
         The output is a lightweight diff that summarises the DELETE and INSERT
         segments.  It is suitable for embedding in a schema
-        :class:`~llm_toolkit_schema.namespaces.diff.DiffPayload`.
+        :class:`~agentobs.namespaces.diff.DiffComputedPayload`.
         """
         lines: list[str] = ["--- model_a", "+++ model_b"]
         for chunk in self.chunks:
@@ -82,7 +82,7 @@ class DiffResult:
         """Return a dict conforming to the ``llm.diff.*`` namespace payload.
 
         Compatible with
-        :class:`~llm_toolkit_schema.namespaces.diff.DiffPayload` field names.
+        :class:`~agentobs.namespaces.diff.DiffComputedPayload` field names.
 
         Parameters
         ----------

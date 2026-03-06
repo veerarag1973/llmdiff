@@ -118,7 +118,7 @@ class JudgeResult:
         """Return a dict conforming to the ``llm.eval.*`` namespace payload.
 
         Compatible with
-        :class:`~llm_toolkit_schema.namespaces.eval.EvalPayload` field names.
+        :class:`~agentobs.namespaces.eval_.EvalScoreRecordedPayload` field names.
         The ``score`` is normalised to a ``0-1`` range from the ``1-10`` scale
         returned by the judge prompt, so consumers always get a consistent range.
         """

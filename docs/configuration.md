@@ -255,7 +255,7 @@ It is safe to delete the entire cache directory at any time.
 ## Observability — Schema Events
 
 `llm-diff` emits structured
-[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/) events for
+[AgentOBS](https://pypi.org/project/agentobs/) events for
 every significant operation.  By default events are built, validated, and
 **discarded** (zero overhead for existing users).  To opt in, call
 `configure_emitter()` once before running any comparisons.
@@ -276,14 +276,14 @@ for evt in get_emitter().events:
 ### Export to JSONL
 
 ```python
-from llm_toolkit_schema.export.jsonl import JSONLExporter
+from agentobs.export.jsonl import JSONLExporter
 from llm_diff.schema_events import configure_emitter
 
 configure_emitter(exporter=JSONLExporter("llm-diff-events.jsonl"))
 ```
 
 Each line of the JSONL file is a self-contained JSON object conforming to the
-`llm-toolkit-schema` envelope.
+`agentobs` envelope.
 
 ### Export to a custom sink
 

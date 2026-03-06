@@ -36,7 +36,7 @@ this** — you can see the terminal output, but you cannot:
 - Alert when cost exceeds a budget
 
 `llm-diff` solves this by emitting a structured
-[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/) event for
+[AgentOBS](https://pypi.org/project/agentobs/) event for
 every significant operation.  Events are validated, timestamped, carry a unique
 ULID ID, and conform to well-defined payload schemas.
 
@@ -79,10 +79,10 @@ Expected output:
 
 ```
 Collected 4 events
-  llm.diff.comparison.started
+  x.llm-diff.comparison.started
   llm.trace.span.completed
   llm.trace.span.completed
-  llm.diff.comparison.completed
+  llm.diff.computed
 ```
 
 Two `llm.trace.span.completed` events are emitted — one per model call.
@@ -148,13 +148,13 @@ for evt in get_emitter().events:
 ```
 
 ```
-llm.diff.comparison.started
+x.llm-diff.comparison.started
 llm.trace.span.completed
 llm.trace.span.completed
-llm.cost.recorded
-llm.cost.recorded
-llm.eval.scenario.completed
-llm.diff.comparison.completed
+llm.cost.token.recorded
+llm.cost.token.recorded
+llm.eval.score.recorded
+llm.diff.computed
 ```
 
 ---
@@ -164,7 +164,7 @@ llm.diff.comparison.completed
 For persistent storage, export to a JSONL file:
 
 ```python
-from llm_toolkit_schema.export.jsonl import JSONLExporter
+from agentobs.export.jsonl import JSONLExporter
 from llm_diff.schema_events import configure_emitter
 
 configure_emitter(exporter=JSONLExporter("llm-diff-events.jsonl"))
@@ -186,7 +186,7 @@ Each line is a complete JSON event:
 ```json
 {
   "event_id": "01KJKVRV15TKQWTYZ8A3NRJKJK",
-  "event_type": "llm.diff.comparison.started",
+  "event_type": "x.llm-diff.comparison.started",
   "source": "llm-diff@1.3.0",
   "timestamp": "2026-03-01T09:15:00.123456Z",
   "payload": {
@@ -222,8 +222,8 @@ Export errors are caught quietly and never interrupt a comparison.
 ## Step 6 — Correlate events
 
 Events carry IDs you can use to trace a full comparison lifecycle.  The
-`comparison.started` event's `event_id` becomes the `source_id` in the
-`comparison.completed` payload:
+`comparison.started` event's `event_id` becomes the `ref_event_id` in the
+`llm.diff.computed` payload:
 
 ```python
 configure_emitter()
@@ -234,14 +234,14 @@ asyncio.run(
 
 evts = get_emitter().events
 
-started   = next(e for e in evts if e.event_type == "llm.diff.comparison.started")
-completed = next(e for e in evts if e.event_type == "llm.diff.comparison.completed")
+started   = next(e for e in evts if e.event_type == "x.llm-diff.comparison.started")
+completed = next(e for e in evts if e.event_type == "llm.diff.computed")
 spans     = [e for e in evts if e.event_type == "llm.trace.span.completed"]
 
 print(f"Started event:    {started.event_id}")
-print(f"Completed source: {completed.payload['source_id']}")
+print(f"Completed source: {completed.payload['ref_event_id']}")
 print(f"Span IDs:         {[s.event_id for s in spans]}")
-print(f"Chain verified:   {completed.payload['source_id'] == started.event_id}")
+print(f"Chain verified:   {completed.payload['ref_event_id'] == started.event_id}")
 ```
 
 ---
@@ -285,8 +285,8 @@ def run_batch_with_audit(
 
     # Print summary
     spans = [e for e in events if e.event_type == "llm.trace.span.completed"]
-    costs = [e for e in events if e.event_type == "llm.cost.recorded"]
-    total_cost = sum(e.payload["cost_usd"] for e in costs)
+    costs = [e for e in events if e.event_type == "llm.cost.token.recorded"]
+    total_cost = sum(e.payload["cost"]["total_cost_usd"] for e in costs)
     avg_latency = sum(e.payload["duration_ms"] for e in spans) / len(spans) if spans else 0
 
     print(f"Batch complete: {len(reports)} prompts")
@@ -312,13 +312,13 @@ if __name__ == "__main__":
 ## Step 8 — Observe `--fail-under` regression events
 
 When a batch or single comparison fails the `--fail-under` threshold, llm-diff
-emits an `llm.eval.regression.failed` event in addition to writing to stderr and
+emits an `llm.eval.regression.detected` event in addition to writing to stderr and
 exiting with code 1.  You can intercept it before that exit (or replay from a
 JSONL file) to build custom alerting:
 
 ```python
 from llm_diff.schema_events import configure_emitter, get_emitter
-from llm_toolkit_schema.export.jsonl import JSONLExporter
+from agentobs.export.jsonl import JSONLExporter
 
 configure_emitter(exporter=JSONLExporter("events.jsonl"))
 
@@ -326,7 +326,7 @@ configure_emitter(exporter=JSONLExporter("events.jsonl"))
 
 regression_events = [
     e for e in get_emitter().events
-    if e.event_type == "llm.eval.regression.failed"
+    if e.event_type == "llm.eval.regression.detected"
 ]
 
 if regression_events:
@@ -334,10 +334,10 @@ if regression_events:
     for evt in regression_events:
         p = evt.payload
         print(
-            f"  {p['scenario_name']}  "
+            f"  {p['metric_name']}  "
             f"score={p['current_score']:.4f}  "
             f"threshold={p['threshold']:.2f}  "
-            f"delta={p['regression_delta']:.4f}"
+            f"delta={p['delta']:.4f}"
         )
 ```
 
@@ -345,10 +345,10 @@ The `EvalRegressionPayload` fields are:
 
 | Field | Description |
 |-------|-------------|
-| `scenario_name` | `"llm-diff/fail-under/single"` or `"llm-diff/fail-under/batch"` |
+| `metric_name` | `"llm-diff/fail-under/single"` or `"llm-diff/fail-under/batch"` |
 | `current_score` | Measured similarity / semantic score |
 | `baseline_score` | The `--fail-under` value |
-| `regression_delta` | `baseline − current` (how far below threshold) |
+| `delta` | `current − baseline` (negative = shortfall) |
 | `threshold` | Same as `baseline_score` |
 | `metrics` | `{"similarity": …}` when semantic score was the primary metric |
 
@@ -385,7 +385,7 @@ for batch in batches:
 | Clear events | `get_emitter().clear()` |
 | Disable memory collection | `configure_emitter(collect=False)` |
 | CLI default | collection disabled automatically (`collect=False`) |
-| Filter regression events | `[e for e in get_emitter().events if e.event_type == "llm.eval.regression.failed"]` |
+| Filter regression events | `[e for e in get_emitter().events if e.event_type == "llm.eval.regression.detected"]` |
 
 ---
 
@@ -393,7 +393,7 @@ for batch in batches:
 
 - [Schema Events Guide](../schema-events.md) — full payload field reference
 - [Python API — Schema Events section](../api.md#schema-events) — function signatures
-- [llm-toolkit-schema on PyPI](https://pypi.org/project/llm-toolkit-schema/)
+- [AgentOBS on PyPI](https://pypi.org/project/agentobs/)
 
 ---
 

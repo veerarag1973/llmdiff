@@ -486,7 +486,7 @@ print("Saved to report.html")
 ## Schema Events
 
 Every `llm-diff` operation emits a structured
-[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/) event that
+[AgentOBS](https://pypi.org/project/agentobs/) event that
 can be collected in memory, exported to JSONL, or forwarded to any custom
 backend.  The integration is **zero-configuration by default** — events are
 built and validated but discarded unless you opt in.
@@ -508,7 +508,7 @@ configure_emitter()          # in-memory only (default)
 With a JSONL exporter:
 
 ```python
-from llm_toolkit_schema.export.jsonl import JSONLExporter
+from agentobs.export.jsonl import JSONLExporter
 from llm_diff.schema_events import configure_emitter
 
 configure_emitter(exporter=JSONLExporter("llm-diff-events.jsonl"))

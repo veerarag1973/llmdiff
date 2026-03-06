@@ -14,7 +14,7 @@
 scores them semantically, and renders results in the terminal or as a
 self-contained HTML report.  It scales to batch workloads, caches API responses,
 gates CI pipelines via `--fail-under`, and emits structured
-[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/) events for
+[AgentOBS](https://pypi.org/project/agentobs/) events for
 observability tooling.
 
 ## What is llm-diff?
@@ -33,12 +33,12 @@ threshold — making it a first-class citizen in CI/CD pipelines.
 Version 1.2 adds LLM-as-a-Judge scoring, per-call USD cost tracking,
 multi-model (3–4 model) comparison, and structured JSON diff.
 
-Version 1.3.0 adds `EVAL_REGRESSION_FAILED` schema event emission — `--fail-under`
-gate failures now emit a structured `llm.eval.regression.failed` event (via
+Version 1.3.0 adds `EVAL_REGRESSION_DETECTED` schema event emission — `--fail-under`
+gate failures now emit a structured `llm.eval.regression.detected` event (via
 `make_eval_regression_event()`) in addition to returning exit code 1,
 providing a full audit trail for CI regression gates.
 
-Version 1.2.2 integrates [llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/)
+Version 1.2.2 integrates [AgentOBS](https://pypi.org/project/agentobs/)
 as a built-in observability layer: every comparison, model call, cache lookup,
 cost record, judge evaluation, and `--fail-under` regression failure now emits a
 validated schema event that can be collected in memory, exported to JSONL, or
@@ -52,7 +52,7 @@ forwarded to any custom backend.
 | [Tutorials](docs/tutorials/README.md) | Step-by-step learning path from first run to Python API (12 tutorials) |
 | [CLI Reference](docs/cli-reference.md) | All flags, option groups, exit codes, YAML format |
 | [Python API](docs/api.md) | All public functions, dataclasses, and field descriptions |
-| [Schema Events](docs/schema-events.md) | Observability integration with llm-toolkit-schema |
+| [Schema Events](docs/schema-events.md) | Observability integration with AgentOBS |
 | [Configuration](docs/configuration.md) | `.llmdiff` TOML schema, env vars, config priority |
 | [Provider Setup](docs/providers.md) | OpenAI, Groq, Mistral, Ollama, LM Studio, Anthropic |
 | [HTML Reports](docs/html-reports.md) | Report anatomy, batch reports, judge card, cost table |
@@ -65,7 +65,7 @@ forwarded to any custom backend.
 pip install "llm-diff[semantic]"
 
 # Install with schema-events observability
-pip install "llm-diff[semantic]" llm-toolkit-schema
+pip install "llm-diff[semantic]" agentobs
 
 # Set an API key
 export OPENAI_API_KEY="sk-..."

@@ -75,16 +75,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **llm-toolkit-schema integration** — `llm-diff` now depends on
-  `llm-toolkit-schema>=1.1.0` and emits a structured, validated schema event
+- **AgentOBS SDK integration** — `llm-diff` now depends on
+  `agentobs>=1.0.5` and emits a structured, validated schema event
   for every significant pipeline operation:
-  - `llm.diff.comparison.started` — before any model calls
-  - `llm.diff.comparison.completed` — after diff is computed (`DiffComparisonPayload`)
-  - `llm.diff.report.exported` — after `save_report()` (`DiffReportPayload`)
-  - `llm.trace.span.completed` — after each model API call (`SpanCompletedPayload`)
+  - `x.llm-diff.comparison.started` — before any model calls
+  - `llm.diff.computed` — after diff is computed (`DiffComputedPayload`)
+  - `x.llm-diff.report.exported` — after `save_report()`
+  - `llm.trace.span.completed` — after each model API call (`SpanPayload`)
   - `llm.cache.hit` / `llm.cache.miss` — on every cache lookup
-  - `llm.cost.recorded` — when `show_cost=True` (`CostRecordedPayload`)
-  - `llm.eval.scenario.completed` — after LLM-as-a-Judge scoring (`EvalScenarioPayload`)
+  - `llm.cost.token.recorded` — when `show_cost=True` (`CostTokenRecordedPayload`)
+  - `llm.eval.score.recorded` — after LLM-as-a-Judge scoring (`EvalScoreRecordedPayload`)
 - New module `llm_diff/schema_events.py` — `EventEmitter`, `configure_emitter()`,
   `get_emitter()`, `emit()`, and all `make_*_event()` factory functions.
 - `DiffResult.as_unified_diff()` — produces a compact unified-diff string from

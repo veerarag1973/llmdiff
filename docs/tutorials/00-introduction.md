@@ -248,12 +248,12 @@ llm-diff 'Return JSON: {"name": "...", "age": ...}' \
 
 Every comparison, model call, cache lookup, cost estimate, judge evaluation, and
 `--fail-under` regression failure automatically emits a structured
-[llm-toolkit-schema](https://pypi.org/project/llm-toolkit-schema/)
+[AgentOBS](https://pypi.org/project/agentobs/)
 event.  Attach any exporter to ship events to JSONL, a database, or a custom
 observability backend with one line of configuration:
 
 ```python
-from llm_toolkit_schema.export.jsonl import JSONLExporter
+from agentobs.export.jsonl import JSONLExporter
 from llm_diff.schema_events import configure_emitter
 
 configure_emitter(exporter=JSONLExporter("events.jsonl"))

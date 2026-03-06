@@ -1,4 +1,4 @@
-"""Tests for llm_diff.schema_events — llm-toolkit-schema integration."""
+"""Tests for llm_diff.schema_events — AgentOBS SDK integration."""
 
 from __future__ import annotations
 
@@ -170,7 +170,7 @@ class TestMakeComparisonStartedEvent:
             model_b="claude-3-5-sonnet",
             prompt="Test",
         )
-        assert evt.event_type == "llm.diff.comparison.started"
+        assert evt.event_type == "x.llm-diff.comparison.started"
 
     def test_source_contains_version(self) -> None:
         from llm_diff import __version__
@@ -240,7 +240,7 @@ class TestMakeComparisonCompletedEvent:
             diff_type="completion",
             similarity_score=0.85,
         )
-        assert evt.event_type == "llm.diff.comparison.completed"
+        assert evt.event_type == "llm.diff.computed"
 
     def test_payload_similarity_score(self) -> None:
         evt = make_comparison_completed_event(
@@ -252,13 +252,21 @@ class TestMakeComparisonCompletedEvent:
         assert evt.payload["similarity_score"] == pytest.approx(0.75)
 
     def test_payload_diff_type(self) -> None:
-        for diff_type in ("prompt", "completion", "both"):
+        # Old "completion"/"both" types are mapped to "response" (AgentOBS standard)
+        # Old "prompt" stays "prompt"
+        cases = {
+            "prompt": "prompt",
+            "completion": "response",
+            "both": "response",
+            "word-level": "response",
+        }
+        for old_type, expected in cases.items():
             evt = make_comparison_completed_event(
                 model_a="gpt-4o",
                 model_b="claude-3-5-sonnet",
-                diff_type=diff_type,
+                diff_type=old_type,
             )
-            assert evt.payload["diff_type"] == diff_type
+            assert evt.payload["diff_type"] == expected, f"diff_type={old_type!r}"
 
     def test_payload_completion_diff(self) -> None:
         evt = make_comparison_completed_event(
@@ -283,8 +291,8 @@ class TestMakeComparisonCompletedEvent:
             diff_type="completion",
             base_event_id=started.event_id,
         )
-        # base_event_id becomes source_id in DiffComparisonPayload
-        assert completed.payload["source_id"] == started.event_id
+        # base_event_id becomes ref_event_id in DiffComputedPayload
+        assert completed.payload["ref_event_id"] == started.event_id
 
     def test_event_validates(self) -> None:
         evt = make_comparison_completed_event(
@@ -307,7 +315,7 @@ class TestMakeReportExportedEvent:
             output_path="/tmp/report.html",
             format="html",
         )
-        assert evt.event_type == "llm.diff.report.exported"
+        assert evt.event_type == "x.llm-diff.report.exported"
 
     def test_payload_fields(self) -> None:
         evt = make_report_exported_event(
@@ -347,9 +355,9 @@ class TestMakeTraceSpanEvent:
         )
         # model is a nested ModelInfo dict
         assert evt.payload["model"]["name"] == "gpt-4o"
-        # token_usage is a nested TokenUsage dict
-        assert evt.payload["token_usage"]["prompt_tokens"] == 100
-        assert evt.payload["token_usage"]["completion_tokens"] == 50
+        # token_usage uses AgentOBS field names: input_tokens / output_tokens
+        assert evt.payload["token_usage"]["input_tokens"] == 100
+        assert evt.payload["token_usage"]["output_tokens"] == 50
         assert evt.payload["duration_ms"] == pytest.approx(250.0)
         assert evt.payload["finish_reason"] == "stop"
         assert evt.payload["stream"] is False
@@ -406,11 +414,11 @@ class TestMakeCacheEvent:
             backend="disk",
             latency_ms=1.5,
         )
-        # CacheHitPayload uses cache_key_hash and cache_store field names
-        assert evt.payload["cache_key_hash"] == "abc123"
-        assert evt.payload["ttl_seconds"] == 3600
-        assert evt.payload["cache_store"] == "disk"
-        assert evt.payload["latency_ms"] == pytest.approx(1.5)
+        # CacheHitPayload uses key_hash and namespace field names
+        assert evt.payload["key_hash"] == "abc123"
+        assert evt.payload["ttl_remaining_seconds"] == 3600
+        assert evt.payload["namespace"] == "disk"
+        assert evt.payload["lookup_duration_ms"] == pytest.approx(1.5)
 
     def test_event_validates(self) -> None:
         make_cache_event(hit=True, cache_key="k1", backend="disk").validate()
@@ -429,7 +437,7 @@ class TestMakeCostRecordedEvent:
             output_cost=0.002,
             total_cost=0.003,
         )
-        assert evt.event_type == "llm.cost.recorded"
+        assert evt.event_type == "llm.cost.token.recorded"
 
     def test_payload_fields(self) -> None:
         evt = make_cost_recorded_event(
@@ -438,11 +446,10 @@ class TestMakeCostRecordedEvent:
             total_cost=0.0021,
             currency="USD",
         )
-        # CostRecordedPayload uses cost_usd for total; input/output are extra fields
-        assert evt.payload["input_cost_usd"] == pytest.approx(0.0015)
-        assert evt.payload["output_cost_usd"] == pytest.approx(0.0006)
-        assert evt.payload["cost_usd"] == pytest.approx(0.0021)
-        assert evt.payload["currency"] == "USD"
+        # CostTokenRecordedPayload nests cost fields under 'cost' key
+        assert evt.payload["cost"]["input_cost_usd"] == pytest.approx(0.0015)
+        assert evt.payload["cost"]["output_cost_usd"] == pytest.approx(0.0006)
+        assert evt.payload["cost"]["total_cost_usd"] == pytest.approx(0.0021)
 
     def test_model_optional_field(self) -> None:
         evt = make_cost_recorded_event(
@@ -451,7 +458,7 @@ class TestMakeCostRecordedEvent:
             total_cost=0.002,
             model="gpt-4o",
         )
-        assert evt.payload.get("model_name") == "gpt-4o"
+        assert evt.payload["model"]["name"] == "gpt-4o"
 
     def test_event_validates(self) -> None:
         make_cost_recorded_event(
@@ -470,7 +477,7 @@ class TestMakeEvalScenarioEvent:
             evaluator="gpt-4o",
             score=7.5,
         )
-        assert evt.event_type == "llm.eval.scenario.completed"
+        assert evt.event_type == "llm.eval.score.recorded"
 
     def test_payload_fields(self) -> None:
         evt = make_eval_scenario_event(
@@ -481,14 +488,14 @@ class TestMakeEvalScenarioEvent:
             rationale="Model A was more concise.",
             criteria=["accuracy", "clarity"],
         )
-        # EvalScenarioPayload uses scenario_name to embed evaluator
-        assert "gpt-4o" in evt.payload["scenario_name"]
+        # EvalScoreRecordedPayload uses evaluator and metric_name
+        assert evt.payload["evaluator"] == "gpt-4o"
         assert evt.payload["score"] == pytest.approx(8.0)
         assert evt.payload["scale"] == "1-10"
         assert evt.payload["label"] == "A"
         assert "concise" in evt.payload["rationale"]
-        # criteria are embedded as keys in the metrics dict
-        assert "accuracy" in evt.payload["metrics"]
+        # criteria are embedded as keys in the criteria dict
+        assert "accuracy" in evt.payload["criteria"]
 
     def test_event_validates(self) -> None:
         make_eval_scenario_event(evaluator="human", score=0.85, scale="0-1").validate()
@@ -657,14 +664,14 @@ class TestDiffEventLifecycle:
         assert len(events) == 3
 
         types = [e.event_type for e in events]
-        assert "llm.diff.comparison.started" in types
-        assert "llm.diff.comparison.completed" in types
-        assert "llm.diff.report.exported" in types
+        assert "x.llm-diff.comparison.started" in types
+        assert "llm.diff.computed" in types
+        assert "x.llm-diff.report.exported" in types
 
         # Verify chain: completed references started
-        completed_evt = next(e for e in events if e.event_type == "llm.diff.comparison.completed")
-        # base_event_id is stored as source_id in DiffComparisonPayload
-        assert completed_evt.payload["source_id"] == started.event_id
+        completed_evt = next(e for e in events if e.event_type == "llm.diff.computed")
+        # base_event_id is stored as ref_event_id in DiffComputedPayload
+        assert completed_evt.payload["ref_event_id"] == started.event_id
 
     def test_events_have_unique_ids(self) -> None:
         e1 = make_comparison_started_event(
@@ -740,7 +747,7 @@ class TestMakeEvalRegressionEvent:
             baseline_score=0.8,
             threshold=0.8,
         )
-        assert evt.event_type == "llm.eval.regression.failed"
+        assert evt.event_type == "llm.eval.regression.detected"
 
     def test_payload_fields(self) -> None:
         evt = make_eval_regression_event(
@@ -750,11 +757,12 @@ class TestMakeEvalRegressionEvent:
             threshold=0.80,
             metrics={"similarity": 0.55},
         )
-        assert evt.payload["scenario_name"] == "llm-diff/fail-under/single"
+        # EvalRegressionDetectedPayload uses metric_name and delta
+        assert evt.payload["metric_name"] == "llm-diff/fail-under/single"
         assert evt.payload["current_score"] == pytest.approx(0.55)
         assert evt.payload["baseline_score"] == pytest.approx(0.80)
         assert evt.payload["threshold"] == pytest.approx(0.80)
-        assert evt.payload["regression_delta"] == pytest.approx(0.25)
+        assert evt.payload["delta"] == pytest.approx(-0.25)
         assert evt.payload["metrics"] == {"similarity": pytest.approx(0.55)}
 
     def test_regression_delta_computed(self) -> None:
@@ -764,8 +772,8 @@ class TestMakeEvalRegressionEvent:
             baseline_score=0.90,
             threshold=0.90,
         )
-        # regression_delta = baseline - current = 0.20
-        assert evt.payload["regression_delta"] == pytest.approx(0.20)
+        # delta = current - baseline = -0.20
+        assert evt.payload["delta"] == pytest.approx(-0.20)
 
     def test_metrics_optional(self) -> None:
         evt = make_eval_regression_event(
@@ -774,7 +782,7 @@ class TestMakeEvalRegressionEvent:
             baseline_score=0.5,
             threshold=0.5,
         )
-        assert evt.payload["metrics"] is None
+        assert evt.payload.get("metrics") is None
 
     def test_scenario_id_generated(self) -> None:
         evt = make_eval_regression_event(
@@ -783,8 +791,8 @@ class TestMakeEvalRegressionEvent:
             baseline_score=0.7,
             threshold=0.7,
         )
-        assert isinstance(evt.payload["scenario_id"], str)
-        assert len(evt.payload["scenario_id"]) > 0
+        # EvalRegressionDetectedPayload uses metric_name instead of scenario_id
+        assert evt.payload["metric_name"] == "llm-diff/fail-under/single"
 
     def test_event_validates(self) -> None:
         make_eval_regression_event(
